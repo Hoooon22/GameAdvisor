@@ -1,4 +1,4 @@
-package com.gameadvisor;
+package com.gameadvisor.model;
 
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;

@@ -31,6 +31,9 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
+import com.gameadvisor.client.ApiClient;
+import com.gameadvisor.client.ProcessScanService;
+
 public class GameAdvisorClient extends Application {
 
     private List<Game> knownGames = new ArrayList<>();
@@ -129,91 +132,6 @@ public class GameAdvisorClient extends Application {
         primaryStage.setTitle("GameAdvisor");
         primaryStage.setScene(scene);
         primaryStage.show();
-    }
-
-    private static class ApiClient {
-        private final OkHttpClient client = new OkHttpClient();
-        private final ObjectMapper mapper = new ObjectMapper();
-        private static final String BASE_URL = "http://localhost:8080/api/games";
-
-        public List<Game> getGames() throws Exception {
-            Request request = new Request.Builder().url(BASE_URL).build();
-            try (Response response = client.newCall(request).execute()) {
-                if (!response.isSuccessful()) {
-                    System.err.println("Failed to fetch game list: " + response);
-                    return new ArrayList<>();
-                }
-                return mapper.readValue(response.body().string(), new TypeReference<List<Game>>() {
-                });
-            }
-        }
-    }
-
-    private static class ProcessScanService extends ScheduledService<String> {
-        private final List<Game> knownGames;
-
-        public ProcessScanService(List<Game> knownGames) {
-            this.knownGames = knownGames;
-        }
-
-        @Override
-        protected Task<String> createTask() {
-            return new Task<>() {
-                @Override
-                protected String call() throws Exception {
-                    List<String> runningGames = findRunningGames();
-                    if (runningGames.isEmpty()) {
-                        return "실행 중인 게임을 찾을 수 없습니다.";
-                    } else {
-                        return "현재 플레이 중:\n" + String.join("\n", runningGames);
-                    }
-                }
-            };
-        }
-
-        private List<String> findRunningGames() throws Exception {
-            List<String> runningProcesses = getRunningProcesses();
-            List<String> foundGames = new ArrayList<>();
-            for (Game game : knownGames) {
-                for (String process : runningProcesses) {
-                    // macOS에서는 .app 확장자를 포함하는 경우가 있으므로, 이를 제거하고 비교합니다.
-                    String cleanProcess = process.replace(".app", "");
-                    if (cleanProcess.equalsIgnoreCase(game.getProcessName())) {
-                        foundGames.add(game.getName());
-                        break; // 같은 게임 프로세스가 여러 개 실행 중일 수 있으므로, 하나만 추가하고 다음 게임으로 넘어갑니다.
-                    }
-                }
-            }
-            return foundGames;
-        }
-
-        private List<String> getRunningProcesses() throws Exception {
-            String os = System.getProperty("os.name").toLowerCase();
-            if (os.contains("win")) {
-                // 윈도우: tasklist 사용
-                ProcessBuilder processBuilder = new ProcessBuilder("tasklist");
-                Process process = processBuilder.start();
-                try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream(), "MS949"))) {
-                    return reader.lines()
-                        .skip(3) // 헤더 3줄 건너뜀
-                        .map(line -> line.split("\\s+")[0])
-                        .collect(Collectors.toList());
-                } finally {
-                    process.waitFor();
-                }
-            } else {
-                // macOS/Linux: ps 사용
-                ProcessBuilder processBuilder = new ProcessBuilder("ps", "-e", "-o", "comm=");
-                Process process = processBuilder.start();
-                try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-                    return reader.lines()
-                        .map(line -> line.substring(line.lastIndexOf('/') + 1))
-                        .collect(Collectors.toList());
-                } finally {
-                    process.waitFor();
-                }
-            }
-        }
     }
 
     public static void main(String[] args) {

@@ -188,15 +188,30 @@ public class GameAdvisorClient extends Application {
         }
 
         private List<String> getRunningProcesses() throws Exception {
-            ProcessBuilder processBuilder = new ProcessBuilder("ps", "-e", "-o", "comm=");
-            Process process = processBuilder.start();
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-                // 프로세스 경로에서 마지막 부분(실행 파일 이름)만 추출
-                return reader.lines()
+            String os = System.getProperty("os.name").toLowerCase();
+            if (os.contains("win")) {
+                // 윈도우: tasklist 사용
+                ProcessBuilder processBuilder = new ProcessBuilder("tasklist");
+                Process process = processBuilder.start();
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream(), "MS949"))) {
+                    return reader.lines()
+                        .skip(3) // 헤더 3줄 건너뜀
+                        .map(line -> line.split("\\s+")[0])
+                        .collect(Collectors.toList());
+                } finally {
+                    process.waitFor();
+                }
+            } else {
+                // macOS/Linux: ps 사용
+                ProcessBuilder processBuilder = new ProcessBuilder("ps", "-e", "-o", "comm=");
+                Process process = processBuilder.start();
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+                    return reader.lines()
                         .map(line -> line.substring(line.lastIndexOf('/') + 1))
                         .collect(Collectors.toList());
-            } finally {
-                process.waitFor();
+                } finally {
+                    process.waitFor();
+                }
             }
         }
     }

@@ -130,15 +130,21 @@ public class GameAdvisorClient extends Application {
                             if (infos == null || infos.isEmpty() || infos.get(0).getRect() == null) {
                                 statusLabel.setText("게임 윈도우를 찾을 수 없습니다.");
                                 overlayPane.getChildren().clear();
-                                // 게임 탐지 전에는 중앙 400x200 유지
-                                scene.getWindow().setWidth(initWidth);
-                                scene.getWindow().setHeight(initHeight);
-                                primaryStage.setX(centerX);
-                                primaryStage.setY(centerY);
+                                // 게임 탐지 전에는 중앙 400x200 유지 (전체화면 확장 금지)
+                                if (scene.getWindow().getWidth() != initWidth || scene.getWindow().getHeight() != initHeight) {
+                                    scene.getWindow().setWidth(initWidth);
+                                    scene.getWindow().setHeight(initHeight);
+                                    primaryStage.setX(centerX);
+                                    primaryStage.setY(centerY);
+                                }
                                 return;
                             }
-                            statusLabel.setText("게임 오버레이 활성화");
-                            RECT rect = infos.get(0).getRect();
+                            // === 탐지 성공 시 ===
+                            GameWindowInfo info = infos.get(0);
+                            statusLabel.setText("탐지 성공: " + info.getGameName() + " (" + info.getProcessName() + ")");
+                            service.cancel(); // 탐지 중단
+
+                            RECT rect = info.getRect();
                             overlayPane.getChildren().clear();
                             // 게임 윈도우 바깥 영역만 오버레이로 채움
                             double screenW = screenBounds.getWidth();
@@ -148,10 +154,12 @@ public class GameAdvisorClient extends Application {
                             double gw = rect.right - rect.left;
                             double gh = rect.bottom - rect.top;
                             // 전체 화면으로 확장
-                            scene.getWindow().setWidth(screenW);
-                            scene.getWindow().setHeight(screenH);
-                            primaryStage.setX(0);
-                            primaryStage.setY(0);
+                            if (scene.getWindow().getWidth() != screenW || scene.getWindow().getHeight() != screenH) {
+                                scene.getWindow().setWidth(screenW);
+                                scene.getWindow().setHeight(screenH);
+                                primaryStage.setX(0);
+                                primaryStage.setY(0);
+                            }
                             // 위
                             Rectangle top = new Rectangle(0, 0, screenW, gy);
                             // 아래

@@ -66,3 +66,11 @@ cd client
 ## 라이선스
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details
+
+## 개발 진행상황
+
+- 백엔드(Spring Boot)에서 MySQL 데이터베이스 연동 및 게임 목록 조회 기능 구현
+- 클라이언트(JavaFX)에서 서버와 연동하여 게임 프로세스 감지 기능 구현
+- 클라이언트 화면을 좌측 상단에 항상 최상단(오버레이)으로 표시하도록 개선
+- 오버레이 창을 반투명(70%)하게 적용하여 시인성 및 UX 개선
+- 오버레이 창 크기를 400x200으로 조정하여 화면 차지 최소화

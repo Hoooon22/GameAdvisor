@@ -82,3 +82,23 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - 탐지 성공 후에는 자동으로 탐지 서비스가 중단되어, 불필요한 반복 탐색을 방지
 - 주요 코드: `WindowUtils.findMainWindowByPid`, `WindowUtils.getWindowRectByHwnd`, `ProcessScanService`, `GameAdvisorClient`
 - 동작 흐름: 프로세스명+PID 추출 → PID로 HWND/RECT 조회 → 탐지 성공 시 오버레이 및 메시지 표시, 서비스 중단
+
+### [2024-07-XX] 맥/윈도우 지원 현황 및 최근 개선 사항
+- **윈도우(Windows):**
+    - 게임 프로세스 탐지, 게임 창 위치/크기(RECT) 추적, 오버레이(게임 바깥 영역 반투명 처리), 창 이동/크기 변경 실시간 반영, 오버레이 Z-Order(게임 창 바로 뒤) 제어까지 모두 지원
+    - JNA(Java Native Access)와 Win32 API(User32.dll) 활용
+    - 게임 창 이동/크기 변경 시 오버레이가 즉시 갱신되고, 오버레이가 항상 게임 창 바로 뒤에 위치함
+- **맥(Mac):**
+    - 게임 프로세스 탐지(실행 중 여부)만 지원
+    - 게임 창 위치/크기 추적, 오버레이, Z-Order 제어 등은 미지원 (macOS native API 연동 필요)
+    - 맥에서는 GameWindowInfo의 RECT가 항상 null이므로, UI에서는 GameWindowInfo 객체 존재만으로 '탐지 성공' 메시지를 표시하도록 분기 처리
+- **공통:**
+    - DB에 등록된 게임(processName)과 실제 실행 중인 프로세스명을 비교하여 매칭
+    - 로그는 매칭 시도/성공/최종 탐지 게임만 간결하게 출력되도록 개선
+
+#### 최근 주요 개선 내역
+- 윈도우 환경에서 게임 창 이동/크기 변경 시 오버레이가 실시간으로 반응하도록 구조 개선
+- 오버레이 Stage가 항상 게임 창 바로 뒤에 오도록 Z-Order 제어 코드 추가(윈도우 전용)
+- 맥/리눅스에서는 RECT 없이도 GameWindowInfo가 있으면 '탐지 성공' 메시지 표시
+- 불필요한 전체 프로세스 로그 제거, 매칭 시도/성공/최종 탐지 게임만 요약 출력
+- 코드 전체적으로 OS별 분기 및 예외 처리 강화

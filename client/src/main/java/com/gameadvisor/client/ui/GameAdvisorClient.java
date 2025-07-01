@@ -37,6 +37,7 @@ import com.gameadvisor.client.model.GameWindowInfo;
 import com.sun.jna.platform.win32.WinDef.RECT;
 import javafx.scene.layout.Pane;
 import javafx.scene.shape.Rectangle;
+import com.gameadvisor.client.util.WindowUtils;
 
 public class GameAdvisorClient extends Application {
 
@@ -121,7 +122,8 @@ public class GameAdvisorClient extends Application {
                     if (knownGames.isEmpty()) {
                         statusLabel.setText("서버에서 게임 목록을 불러오지 못했습니다.\n서버가 실행 중인지 확인하세요.");
                     } else {
-                        ProcessScanService service = new ProcessScanService(knownGames);
+                        com.sun.jna.platform.win32.WinDef.HWND overlayHwnd = com.gameadvisor.client.util.WindowUtils.getHWNDFromStage(primaryStage);
+                        ProcessScanService service = new ProcessScanService(knownGames, overlayHwnd);
                         service.setPeriod(Duration.seconds(1)); // 1초마다 위치 갱신
 
                         service.setOnRunning(e -> statusLabel.setText("실행 중인 게임 탐색 중..."));
@@ -142,9 +144,20 @@ public class GameAdvisorClient extends Application {
                             // === 탐지 성공 시 ===
                             GameWindowInfo info = infos.get(0);
                             statusLabel.setText("탐지 성공: " + info.getGameName() + " (" + info.getProcessName() + ")");
-                            service.cancel(); // 탐지 중단
+                            // service.cancel(); // 탐지 중단 제거: 계속 감시
 
                             RECT rect = info.getRect();
+                            // 오버레이 AlwaysOnTop 해제
+                            primaryStage.setAlwaysOnTop(false);
+                            // 오버레이를 게임 창 뒤로 보냄 (윈도우에서만)
+                            com.gameadvisor.client.util.WindowUtils.sendToBack(overlayHwnd, info.getHwnd());
+
+                            // 최소화 상태(RECT가 0)면 오버레이 숨김
+                            if (rect.left == 0 && rect.top == 0 && rect.right == 0 && rect.bottom == 0) {
+                                overlayPane.getChildren().clear();
+                                return;
+                            }
+
                             overlayPane.getChildren().clear();
                             // 게임 윈도우 바깥 영역만 오버레이로 채움
                             double screenW = screenBounds.getWidth();

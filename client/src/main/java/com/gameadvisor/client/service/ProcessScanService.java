@@ -15,9 +15,11 @@ import com.gameadvisor.client.model.Game;
 
 public class ProcessScanService extends ScheduledService<List<GameWindowInfo>> {
     private final List<Game> knownGames;
+    private final com.sun.jna.platform.win32.WinDef.HWND overlayHwnd;
 
-    public ProcessScanService(List<Game> knownGames) {
+    public ProcessScanService(List<Game> knownGames, com.sun.jna.platform.win32.WinDef.HWND overlayHwnd) {
         this.knownGames = knownGames;
+        this.overlayHwnd = overlayHwnd;
     }
 
     @Override
@@ -35,21 +37,19 @@ public class ProcessScanService extends ScheduledService<List<GameWindowInfo>> {
         List<GameWindowInfo> foundGames = new ArrayList<>();
         for (Game game : knownGames) {
             String target = game.getProcessName().toLowerCase().replace(".exe", "").trim();
-            System.out.println("[DEBUG] 서버에서 받은 processName: " + game.getProcessName() + " → 비교용: " + target);
             for (ProcessInfo process : runningProcesses) {
                 String proc = process.name.toLowerCase().replace(".exe", "").trim();
-                System.out.println("[DEBUG] 실행중 프로세스: " + process.name + " → 비교용: " + proc);
                 if (proc.equals(target) || proc.contains(target) || target.contains(proc)) {
-                    System.out.println("[DEBUG] 매칭 성공: " + process.name + " <-> " + game.getProcessName());
-                    // PID로 HWND, RECT 구하기
                     var hwnd = WindowUtils.findMainWindowByPid(process.pid);
+                    WindowUtils.bringToFront(hwnd);
                     var rect = WindowUtils.getWindowRectByHwnd(hwnd);
-                    foundGames.add(new GameWindowInfo(game.getName(), process.name, rect));
-                    System.out.println("[DEBUG] GameWindowInfo 추가됨(RECT 포함): " + game.getName() + ", RECT=" + (rect != null ? rect.toString() : "null"));
+                    foundGames.add(new GameWindowInfo(game.getName(), process.name, rect, hwnd));
                 }
             }
         }
-        System.out.println("[DEBUG] 탐지된 게임: " + foundGames);
+        if (!foundGames.isEmpty()) {
+            System.out.println("[DEBUG] 탐지된 게임: " + foundGames);
+        }
         return foundGames;
     }
 
@@ -115,7 +115,6 @@ public class ProcessScanService extends ScheduledService<List<GameWindowInfo>> {
                 process.waitFor();
             }
         }
-        System.out.println("[DEBUG] 탐지된 프로세스명+PID: " + result);
         return result;
     }
 } 

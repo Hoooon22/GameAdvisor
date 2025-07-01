@@ -85,4 +85,36 @@ public class WindowUtils {
         boolean gotRect = User32.INSTANCE.GetWindowRect(hwnd, rect);
         return gotRect ? rect : null;
     }
+
+    // HWND를 화면 맨 앞으로 가져오기
+    public static boolean bringToFront(HWND hwnd) {
+        if (hwnd == null) return false;
+        return User32.INSTANCE.SetForegroundWindow(hwnd);
+    }
+
+    // HWND를 오버레이(overlayHwnd) 바로 뒤로 보내기
+    public static boolean sendToBack(HWND hwnd, HWND overlayHwnd) {
+        if (hwnd == null) return false;
+        // HWND_BOTTOM = new HWND(Pointer.createConstant(1L))
+        HWND HWND_BOTTOM = new HWND(Pointer.createConstant(1L));
+        // SWP_NOSIZE(0x0001) | SWP_NOMOVE(0x0002) | SWP_NOACTIVATE(0x0010)
+        int flags = 0x0001 | 0x0002 | 0x0010;
+        return User32.INSTANCE.SetWindowPos(hwnd, HWND_BOTTOM, 0, 0, 0, 0, flags);
+    }
+
+    // JavaFX Stage에서 HWND 얻기 (윈도우에서만 동작, reflection 활용)
+    public static HWND getHWNDFromStage(javafx.stage.Stage stage) {
+        try {
+            // Stage -> Window -> nativeHandle (reflection)
+            java.lang.reflect.Method getPeer = stage.getClass().getDeclaredMethod("impl_getPeer");
+            getPeer.setAccessible(true);
+            Object tkStage = getPeer.invoke(stage);
+            java.lang.reflect.Method getRawHandle = tkStage.getClass().getDeclaredMethod("getRawHandle");
+            getRawHandle.setAccessible(true);
+            long handle = (Long) getRawHandle.invoke(tkStage);
+            return new HWND(new Pointer(handle));
+        } catch (Throwable t) {
+            return null;
+        }
+    }
 } 

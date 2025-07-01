@@ -22,4 +22,9 @@ public class GameController {
     public List<Game> getGames() {
         return gameService.getAllGames();
     }
+
+    @GetMapping("/api/gemini-test")
+    public String geminiTest() {
+        return "제미나이 API 테스트: 게임 도우미가 정상적으로 동작합니다.";
+    }
 } 

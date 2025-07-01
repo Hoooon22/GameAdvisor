@@ -1,6 +1,7 @@
 package com.gameadvisor.client.ui;
 
 import com.gameadvisor.client.model.Game;
+import com.gameadvisor.client.ui.components.CharacterOverlay;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import javafx.application.Application;
@@ -42,169 +43,200 @@ import com.gameadvisor.client.util.WindowUtils;
 public class GameAdvisorClient extends Application {
 
     private List<Game> knownGames = new ArrayList<>();
+    private CharacterOverlay characterOverlay;
+    private Stage overlayStage;
 
     @Override
     public void start(Stage primaryStage) {
-        Label statusLabel = new Label("초기화 중...");
-        statusLabel.setFont(new Font("Arial", 24));
-        statusLabel.setAlignment(Pos.CENTER);
-
-        // 날짜/시간 표시용 라벨 생성
-        Label dateLabel = new Label("");
-        dateLabel.setFont(new Font("Arial", 16));
-        dateLabel.setTextFill(Color.WHITE);
-        dateLabel.setAlignment(Pos.TOP_RIGHT);
-        dateLabel.setPadding(new Insets(10, 10, 0, 0));
-
-        Pane overlayPane = new Pane();
-        overlayPane.setPickOnBounds(false); // 오버레이 영역만 마우스 이벤트 차단
-
-        // StackPane 대신 BorderPane 사용하여 우측 상단 배치
-        BorderPane root = new BorderPane();
-        root.setCenter(statusLabel);
-        BorderPane.setAlignment(statusLabel, Pos.CENTER);
-        root.setTop(dateLabel);
-        BorderPane.setAlignment(dateLabel, Pos.TOP_RIGHT);
-        root.getChildren().add(overlayPane);
-
-        // Scene, Stage 초기 크기/위치: 화면 중앙 400x200
-        double initWidth = 400;
-        double initHeight = 200;
-        javafx.geometry.Rectangle2D screenBounds = javafx.stage.Screen.getPrimary().getVisualBounds();
-        double centerX = (screenBounds.getWidth() - initWidth) / 2;
-        double centerY = (screenBounds.getHeight() - initHeight) / 2;
-
-        Scene scene = new Scene(root, initWidth, initHeight);
-        scene.setFill(Color.rgb(30, 30, 30, 0.7));
-
-        primaryStage.initStyle(StageStyle.TRANSPARENT);
-        primaryStage.setAlwaysOnTop(true);
-        primaryStage.setX(centerX);
-        primaryStage.setY(centerY);
-        primaryStage.setOpacity(0.9);
-        primaryStage.setScene(scene);
-        primaryStage.setTitle("GameAdvisor");
-
-        // 날짜/시간 주기적 갱신
-        javafx.animation.Timeline timeline = new javafx.animation.Timeline(
-            new javafx.animation.KeyFrame(Duration.seconds(1), e -> {
-                new Thread(() -> {
-                    try {
-                        OkHttpClient client = new OkHttpClient();
-                        Request request = new Request.Builder().url("http://localhost:8080/api/games/date").build();
-                        try (Response response = client.newCall(request).execute()) {
-                            if (response.isSuccessful() && response.body() != null) {
-                                String dateTimeStr = response.body().string().replaceAll("\"", "");
-                                // LocalDateTime 파싱 및 포맷팅
-                                LocalDateTime dateTime = LocalDateTime.parse(dateTimeStr);
-                                String formatted = dateTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
-                                javafx.application.Platform.runLater(() -> dateLabel.setText(formatted));
-                            } else {
-                                javafx.application.Platform.runLater(() -> dateLabel.setText("시간 불러오기 실패"));
-                            }
-                        }
-                    } catch (Exception ex) {
-                        javafx.application.Platform.runLater(() -> dateLabel.setText("시간 오류"));
-                    }
-                }).start();
-            })
-        );
-        timeline.setCycleCount(javafx.animation.Animation.INDEFINITE);
-        timeline.play();
-
-        // 1. 애플리케이션 시작 시 서버에서 게임 목록 가져오기
+        // 초기 상태창 (작은 창)
+        createInitialStatusWindow(primaryStage);
+        
+        // 게임 목록 가져오기 및 프로세스 감지 시작
         new Thread(() -> {
             ApiClient apiClient = new ApiClient();
             try {
                 knownGames = apiClient.getGames();
-                // UI 스레드에서 서비스 시작
                 javafx.application.Platform.runLater(() -> {
                     if (knownGames.isEmpty()) {
-                        statusLabel.setText("서버에서 게임 목록을 불러오지 못했습니다.\n서버가 실행 중인지 확인하세요.");
+                        updateStatusWindow(primaryStage, "서버에서 게임 목록을 불러오지 못했습니다.\n서버가 실행 중인지 확인하세요.");
                     } else {
-                        com.sun.jna.platform.win32.WinDef.HWND overlayHwnd = com.gameadvisor.client.util.WindowUtils.getHWNDFromStage(primaryStage);
-                        ProcessScanService service = new ProcessScanService(knownGames, overlayHwnd);
-                        service.setPeriod(Duration.seconds(1)); // 1초마다 위치 갱신
-
-                        service.setOnRunning(e -> statusLabel.setText("실행 중인 게임 탐색 중..."));
-                        service.setOnSucceeded(e -> {
-                            List<GameWindowInfo> infos = service.getValue();
-                            if (infos == null || infos.isEmpty() || infos.get(0).getRect() == null) {
-                                statusLabel.setText("게임 윈도우를 찾을 수 없습니다.");
-                                overlayPane.getChildren().clear();
-                                // 게임 탐지 전에는 중앙 400x200 유지 (전체화면 확장 금지)
-                                if (scene.getWindow().getWidth() != initWidth || scene.getWindow().getHeight() != initHeight) {
-                                    scene.getWindow().setWidth(initWidth);
-                                    scene.getWindow().setHeight(initHeight);
-                                    primaryStage.setX(centerX);
-                                    primaryStage.setY(centerY);
-                                }
-                                return;
-                            }
-                            // === 탐지 성공 시 ===
-                            GameWindowInfo info = infos.get(0);
-                            statusLabel.setText("탐지 성공: " + info.getGameName() + " (" + info.getProcessName() + ")");
-                            // service.cancel(); // 탐지 중단 제거: 계속 감시
-
-                            RECT rect = info.getRect();
-                            // 오버레이 AlwaysOnTop 해제
-                            primaryStage.setAlwaysOnTop(false);
-                            // 오버레이를 게임 창 뒤로 보냄 (윈도우에서만)
-                            com.gameadvisor.client.util.WindowUtils.sendToBack(overlayHwnd, info.getHwnd());
-
-                            // 최소화 상태(RECT가 0)면 오버레이 숨김
-                            if (rect.left == 0 && rect.top == 0 && rect.right == 0 && rect.bottom == 0) {
-                                overlayPane.getChildren().clear();
-                                return;
-                            }
-
-                            overlayPane.getChildren().clear();
-                            // 게임 윈도우 바깥 영역만 오버레이로 채움
-                            double screenW = screenBounds.getWidth();
-                            double screenH = screenBounds.getHeight();
-                            double gx = rect.left;
-                            double gy = rect.top;
-                            double gw = rect.right - rect.left;
-                            double gh = rect.bottom - rect.top;
-                            // 전체 화면으로 확장
-                            if (scene.getWindow().getWidth() != screenW || scene.getWindow().getHeight() != screenH) {
-                                scene.getWindow().setWidth(screenW);
-                                scene.getWindow().setHeight(screenH);
-                                primaryStage.setX(0);
-                                primaryStage.setY(0);
-                            }
-                            // 위
-                            Rectangle top = new Rectangle(0, 0, screenW, gy);
-                            // 아래
-                            Rectangle bottom = new Rectangle(0, gy+gh, screenW, screenH-(gy+gh));
-                            // 왼쪽
-                            Rectangle left = new Rectangle(0, gy, gx, gh);
-                            // 오른쪽
-                            Rectangle right = new Rectangle(gx+gw, gy, screenW-(gx+gw), gh);
-                            for (Rectangle r : new Rectangle[]{top, bottom, left, right}) {
-                                r.setFill(Color.rgb(30,30,30,0.7));
-                                r.setMouseTransparent(false);
-                            }
-                            overlayPane.getChildren().addAll(top, bottom, left, right);
-                        });
-                        service.setOnFailed(e -> {
-                            statusLabel.setText("오류: 프로세스를 스캔할 수 없습니다.");
-                            overlayPane.getChildren().clear();
-                            if (service.getException() != null) {
-                                service.getException().printStackTrace();
-                            }
-                        });
-                        service.start();
-                        primaryStage.setOnCloseRequest(event -> service.cancel());
+                        updateStatusWindow(primaryStage, "게임 탐지 대기 중...\n게임을 실행해주세요!");
+                        startGameDetection(primaryStage);
                     }
                 });
             } catch (Exception e) {
                 e.printStackTrace();
-                javafx.application.Platform.runLater(() -> statusLabel.setText("서버 연결 오류."));
+                javafx.application.Platform.runLater(() -> {
+                    updateStatusWindow(primaryStage, "서버 연결 오류\n" + e.getMessage());
+                });
             }
         }).start();
 
         primaryStage.show();
+    }
+    
+    private void createInitialStatusWindow(Stage stage) {
+        Label statusLabel = new Label("게임 어드바이저 초기화 중...");
+        statusLabel.setFont(new Font("Malgun Gothic", 14));
+        statusLabel.setAlignment(Pos.CENTER);
+        statusLabel.setTextFill(Color.WHITE);
+        statusLabel.setStyle("-fx-background-color: rgba(0, 0, 0, 0.8); -fx-background-radius: 10px; -fx-padding: 15px;");
+
+        StackPane root = new StackPane(statusLabel);
+        root.setAlignment(Pos.CENTER);
+        root.setStyle("-fx-background-color: transparent;");
+
+        Scene scene = new Scene(root, 300, 100);
+        scene.setFill(Color.TRANSPARENT);
+
+        javafx.geometry.Rectangle2D screenBounds = javafx.stage.Screen.getPrimary().getVisualBounds();
+        double centerX = (screenBounds.getWidth() - 300) / 2;
+        double centerY = (screenBounds.getHeight() - 100) / 2;
+
+        stage.initStyle(StageStyle.TRANSPARENT);
+        stage.setAlwaysOnTop(true);
+        stage.setX(centerX);
+        stage.setY(centerY);
+        stage.setScene(scene);
+        stage.setTitle("GameAdvisor");
+        
+        // 상태창 정보를 저장
+        stage.getProperties().put("statusLabel", statusLabel);
+    }
+    
+    private void updateStatusWindow(Stage stage, String message) {
+        Label statusLabel = (Label) stage.getProperties().get("statusLabel");
+        if (statusLabel != null) {
+            statusLabel.setText(message);
+        }
+    }
+    
+    private void createGameOverlay() {
+        if (overlayStage != null) {
+            return; // 이미 생성되었으면 리턴
+        }
+        
+        // 완전히 투명한 오버레이 창 생성
+        overlayStage = new Stage();
+        
+        // 캐릭터 오버레이를 위한 완전히 투명한 Pane
+        Pane overlayPane = new Pane();
+        overlayPane.setPickOnBounds(false); // 마우스 이벤트를 게임으로 통과
+        overlayPane.setStyle("-fx-background-color: transparent;");
+        
+        // 캐릭터 오버레이 초기화
+        characterOverlay = new CharacterOverlay(overlayPane);
+
+        // 완전히 투명한 루트
+        StackPane root = new StackPane(overlayPane);
+        root.setStyle("-fx-background-color: transparent;");
+        root.setPickOnBounds(false); // 마우스 이벤트 통과
+
+        // 전체 화면 크기로 Scene 생성
+        javafx.geometry.Rectangle2D screenBounds = javafx.stage.Screen.getPrimary().getVisualBounds();
+        Scene scene = new Scene(root, screenBounds.getWidth(), screenBounds.getHeight());
+        scene.setFill(Color.TRANSPARENT); // 완전히 투명한 배경
+        
+        overlayStage.initStyle(StageStyle.TRANSPARENT);
+        overlayStage.setAlwaysOnTop(true); // 항상 게임 위에 표시
+        overlayStage.setX(0);
+        overlayStage.setY(0);
+        overlayStage.setScene(scene);
+        overlayStage.setTitle("GameAdvisor Overlay");
+        
+        // 종료 시 정리
+        overlayStage.setOnCloseRequest(event -> {
+            if (characterOverlay != null) {
+                characterOverlay.cleanup();
+            }
+        });
+    }
+    
+    private void startGameDetection(Stage statusStage) {
+        com.sun.jna.platform.win32.WinDef.HWND statusHwnd = com.gameadvisor.client.util.WindowUtils.getHWNDFromStage(statusStage);
+        ProcessScanService service = new ProcessScanService(knownGames, statusHwnd);
+        service.setPeriod(Duration.seconds(1));
+
+        service.setOnRunning(e -> {
+            updateStatusWindow(statusStage, "게임을 찾고 있습니다...");
+        });
+        
+        service.setOnSucceeded(e -> {
+            List<GameWindowInfo> infos = service.getValue();
+            if (infos == null || infos.isEmpty() || infos.get(0).getRect() == null) {
+                // 게임 탐지 실패 시
+                if (overlayStage != null && overlayStage.isShowing()) {
+                    overlayStage.hide();
+                    statusStage.show(); // 상태창 다시 표시
+                }
+                updateStatusWindow(statusStage, "게임 윈도우를 찾을 수 없습니다.\n게임을 실행해주세요.");
+                return;
+            }
+
+            // 게임 탐지 성공 시
+            GameWindowInfo info = infos.get(0);
+            RECT rect = info.getRect();
+            
+            // 최소화 상태 확인
+            if (rect.left <= -32000 && rect.top <= -32000) {
+                if (overlayStage != null && overlayStage.isShowing()) {
+                    overlayStage.hide();
+                    statusStage.show();
+                }
+                updateStatusWindow(statusStage, info.getGameName() + " 감지됨 (최소화 상태)");
+                return;
+            }
+
+            // 게임이 정상적으로 탐지된 경우
+            if (overlayStage == null) {
+                createGameOverlay(); // 오버레이 창 생성
+            }
+            
+            // 상태창 숨기고 오버레이 표시
+            statusStage.hide();
+            overlayStage.show();
+            
+            // 캐릭터 활성화
+            characterOverlay.activateCharacter(info);
+            
+            System.out.println("[DEBUG] 탐지된 게임: " + info);
+            
+            // 게임별 특별 조언 제공 (첫 감지 시에만)
+            if (!characterOverlay.isCharacterActive()) {
+                new Thread(() -> {
+                    try {
+                        Thread.sleep(3000); // 3초 후 게임별 조언
+                        characterOverlay.provideGameSpecificAdvice(info.getGameName());
+                    } catch (InterruptedException ex) {
+                        Thread.currentThread().interrupt();
+                    }
+                }).start();
+            }
+        });
+        
+        service.setOnFailed(e -> {
+            updateStatusWindow(statusStage, "오류: 프로세스를 스캔할 수 없습니다.");
+            if (overlayStage != null && overlayStage.isShowing()) {
+                overlayStage.hide();
+                statusStage.show();
+            }
+            if (service.getException() != null) {
+                service.getException().printStackTrace();
+            }
+        });
+        
+        service.start();
+        
+        // 종료 시 정리
+        statusStage.setOnCloseRequest(event -> {
+            service.cancel();
+            if (characterOverlay != null) {
+                characterOverlay.cleanup();
+            }
+            if (overlayStage != null) {
+                overlayStage.close();
+            }
+        });
     }
 
     public static void main(String[] args) {

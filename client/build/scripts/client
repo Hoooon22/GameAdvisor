@@ -201,7 +201,7 @@ fi
 
 set -- \
         -classpath "$CLASSPATH" \
-        com.gameadvisor.client.GameAdvisorClient \
+        com.gameadvisor.client.ui.GameAdvisorClient \
         "$@"
 
 # Stop when "xargs" is not available.

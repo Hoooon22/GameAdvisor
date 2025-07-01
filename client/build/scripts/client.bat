@@ -71,7 +71,7 @@ set CLASSPATH=%APP_HOME%\lib\client-0.1.0-SNAPSHOT.jar;%APP_HOME%\lib\javafx-fxm
 
 
 @rem Execute client
-"%JAVA_EXE%" %DEFAULT_JVM_OPTS% %JAVA_OPTS% %CLIENT_OPTS%  -classpath "%CLASSPATH%" com.gameadvisor.client.GameAdvisorClient %*
+"%JAVA_EXE%" %DEFAULT_JVM_OPTS% %JAVA_OPTS% %CLIENT_OPTS%  -classpath "%CLASSPATH%" com.gameadvisor.client.ui.GameAdvisorClient %*
 
 :end
 @rem End local scope for the variables with windows NT shell

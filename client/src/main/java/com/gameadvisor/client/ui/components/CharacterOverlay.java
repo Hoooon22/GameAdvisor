@@ -29,6 +29,10 @@ public class CharacterOverlay {
     private Timeline idleActivityTimer;
     private Random random = new Random();
     
+    // 물리 효과 완료 후 위치 업데이트 방지용 쿨다운
+    private long lastPhysicsCompletedTime = 0;
+    private static final long POSITION_UPDATE_COOLDOWN = 3000; // 3초
+    
     public CharacterOverlay(Pane overlayPane) {
         this.overlayPane = overlayPane;
         initializeComponents();
@@ -42,6 +46,17 @@ public class CharacterOverlay {
         character = new AdvisorCharacter();
         speechBubble = new SpeechBubble();
         
+        // 물리 효과 완료 시 위치 동기화 콜백 설정
+        character.setOnPhysicsCompleted(() -> {
+            syncCharacterPosition();
+            lastPhysicsCompletedTime = System.currentTimeMillis(); // 쿨다운 시작
+            System.out.println("[DEBUG] 물리 효과 완료 - 위치 동기화됨, 쿨다운 시작");
+        });
+        
+        // 캐릭터가 마우스 이벤트를 받을 수 있도록 설정
+        character.setMouseTransparent(false);
+        speechBubble.setMouseTransparent(true); // 말풍선은 클릭 불가
+        
         // 오버레이에 추가
         overlayPane.getChildren().addAll(character, speechBubble);
         
@@ -54,6 +69,7 @@ public class CharacterOverlay {
      * 게임 감지 시 캐릭터 활성화
      */
     public void activateCharacter(GameWindowInfo gameInfo) {
+        GameWindowInfo previousGameInfo = this.currentGameInfo;
         this.currentGameInfo = gameInfo;
         
         if (!isCharacterActive) {
@@ -73,8 +89,22 @@ public class CharacterOverlay {
             // 자동 활동 시작
             startIdleActivity();
         } else {
-            // 이미 활성화된 상태에서 게임 창 변경 시 위치 업데이트
-            updateCharacterPosition(gameInfo);
+            // 게임 창 정보가 실제로 변경되었는지 확인
+            boolean gameWindowChanged = false;
+            if (previousGameInfo != null) {
+                gameWindowChanged = !gameInfo.getRect().equals(previousGameInfo.getRect()) ||
+                                  !gameInfo.getGameName().equals(previousGameInfo.getGameName());
+            }
+            
+            // 게임 창이 실제로 변경되었을 때만 위치 업데이트
+            if (gameWindowChanged) {
+                System.out.println("[DEBUG] 게임 창 변경 감지 - 위치 업데이트 실행");
+                updateCharacterPosition(gameInfo);
+            } else {
+                // 변경되지 않았다면 경계만 업데이트
+                character.setBounds(gameInfo.getRect().left, gameInfo.getRect().top, 
+                                  gameInfo.getRect().right, gameInfo.getRect().bottom);
+            }
         }
     }
     
@@ -92,6 +122,28 @@ public class CharacterOverlay {
      * 게임 창 하단에 캐릭터 배치
      */
     private void positionCharacterAtGameBottom(GameWindowInfo gameInfo) {
+        // 캐릭터가 물리 효과 중이거나 드래그 중일 때는 위치를 강제로 변경하지 않음
+        if (character.isInPhysicsMode() || character.isBeingDragged()) {
+            // 경계만 업데이트
+            RECT rect = gameInfo.getRect();
+            character.setBounds(rect.left, rect.top, rect.right, rect.bottom);
+            System.out.println("[DEBUG] 물리 모드 중 - 경계만 업데이트: minX=" + rect.left + ", minY=" + rect.top + 
+                             ", maxX=" + rect.right + ", maxY=" + rect.bottom);
+            return;
+        }
+        
+        // 물리 효과 완료 후 쿨다운 중인지 확인
+        long currentTime = System.currentTimeMillis();
+        boolean inCooldown = (currentTime - lastPhysicsCompletedTime) < POSITION_UPDATE_COOLDOWN;
+        
+        if (inCooldown) {
+            System.out.println("[DEBUG] 물리 효과 쿨다운 중 - 위치 재설정 방지");
+            // 경계만 업데이트
+            RECT rect = gameInfo.getRect();
+            character.setBounds(rect.left, rect.top, rect.right, rect.bottom);
+            return;
+        }
+        
         RECT rect = gameInfo.getRect();
         
         // 게임 창의 실제 크기와 위치 계산
@@ -115,6 +167,12 @@ public class CharacterOverlay {
             character.setLayoutX(characterX);
             character.setLayoutY(characterY);
             
+            // 캐릭터 물리 효과 경계 설정 (게임 창에 맞춤)
+            character.setBounds(gameLeft, gameTop, rect.right, rect.bottom);
+            
+            System.out.println("[DEBUG] 캐릭터 경계값 설정: minX=" + gameLeft + ", minY=" + gameTop + 
+                             ", maxX=" + rect.right + ", maxY=" + rect.bottom);
+            
             // 말풍선 위치도 업데이트
             updateSpeechBubblePosition();
         });
@@ -127,22 +185,48 @@ public class CharacterOverlay {
      * 캐릭터 위치 업데이트 (게임 창 크기 변경 시)
      */
     private void updateCharacterPosition(GameWindowInfo gameInfo) {
-        if (isCharacterActive) {
+        // 물리 효과 완료 후 쿨다운 중인지 확인
+        long currentTime = System.currentTimeMillis();
+        boolean inCooldown = (currentTime - lastPhysicsCompletedTime) < POSITION_UPDATE_COOLDOWN;
+        
+        if (inCooldown) {
+            System.out.println("[DEBUG] 물리 효과 쿨다운 중 - 위치 업데이트 건너뜀 (남은 시간: " + 
+                             (POSITION_UPDATE_COOLDOWN - (currentTime - lastPhysicsCompletedTime)) + "ms)");
+            // 경계만 업데이트
+            RECT rect = gameInfo.getRect();
+            character.setBounds(rect.left, rect.top, rect.right, rect.bottom);
+            return;
+        }
+        
+        if (isCharacterActive && !character.isInPhysicsMode() && !character.isBeingDragged()) {
             positionCharacterAtGameBottom(gameInfo);
+        } else if (isCharacterActive) {
+            // 물리 모드 중이거나 드래그 중일 때는 경계만 업데이트
+            RECT rect = gameInfo.getRect();
+            character.setBounds(rect.left, rect.top, rect.right, rect.bottom);
         }
     }
     
     /**
-     * 말풍선 위치 업데이트
+     * 말풍선 위치 업데이트 (캐릭터의 실제 위치 기반)
      */
     private void updateSpeechBubblePosition() {
         Platform.runLater(() -> {
             speechBubble.positionAboveCharacter(
-                characterX, 
-                characterY, 
+                character.getLayoutX(), 
+                character.getLayoutY(), 
                 character.getCharacterWidth()
             );
         });
+    }
+    
+    /**
+     * 캐릭터의 실제 위치로 추적 변수 동기화
+     */
+    public void syncCharacterPosition() {
+        characterX = character.getLayoutX();
+        characterY = character.getLayoutY();
+        System.out.println("[DEBUG] 캐릭터 위치 동기화: (" + characterX + ", " + characterY + ")");
     }
     
     /**
@@ -152,9 +236,21 @@ public class CharacterOverlay {
         if (!isCharacterActive) return;
         
         Platform.runLater(() -> {
-            character.setState(AdvisorCharacter.AnimationState.TALKING);
+            // 물리 모드가 아닐 때만 상태 변경
+            if (!character.isInPhysicsMode()) {
+                character.setState(AdvisorCharacter.AnimationState.TALKING);
+            }
             updateSpeechBubblePosition();
             speechBubble.showMessage(message, bubbleType);
+            
+            // 물리 모드 중일 때는 말풍선 위치를 지속적으로 업데이트
+            if (character.isInPhysicsMode()) {
+                Timeline bubbleUpdateTimer = new Timeline(
+                    new KeyFrame(Duration.millis(50), e -> updateSpeechBubblePosition())
+                );
+                bubbleUpdateTimer.setCycleCount(60); // 3초간 업데이트 (50ms × 60)
+                bubbleUpdateTimer.play();
+            }
         });
     }
     
@@ -162,7 +258,7 @@ public class CharacterOverlay {
      * 캐릭터 걷기 (게임 창 내에서)
      */
     public void makeCharacterWalk() {
-        if (!isCharacterActive || currentGameInfo == null) return;
+        if (!isCharacterActive || currentGameInfo == null || character.isInPhysicsMode() || character.isBeingDragged()) return;
         
         RECT rect = currentGameInfo.getRect();
         double gameWidth = rect.right - rect.left;
@@ -177,11 +273,17 @@ public class CharacterOverlay {
         double targetY = rect.bottom - character.getCharacterHeight() - 5;
         
         Platform.runLater(() -> {
-            // 상대적 이동 계산
-            double deltaX = targetX - characterX;
+            // 캐릭터의 현재 실제 위치 기반으로 상대적 이동 계산
+            double currentX = character.getLayoutX();
+            double deltaX = targetX - currentX;
             
             character.walkTo(deltaX, 0);
-            characterX = targetX;
+            
+            // 걷기가 완료된 후 위치 동기화
+            Timeline syncAfterWalk = new Timeline(
+                new KeyFrame(Duration.seconds(2.1), e -> syncCharacterPosition()) // 걷기 완료 후 동기화
+            );
+            syncAfterWalk.play();
             
             // 걷는 동안 말풍선 위치 지속 업데이트
             Timeline updateBubblePosition = new Timeline(
@@ -225,6 +327,11 @@ public class CharacterOverlay {
      */
     private void performRandomActivity() {
         if (!isCharacterActive) return;
+        
+        // 캐릭터가 물리 효과 중이거나 드래그 중이면 자동 활동하지 않음
+        if (character.isInPhysicsMode() || character.isBeingDragged()) {
+            return;
+        }
         
         int activity = random.nextInt(4);
         

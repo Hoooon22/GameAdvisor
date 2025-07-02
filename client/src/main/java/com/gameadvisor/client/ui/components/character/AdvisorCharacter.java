@@ -618,6 +618,8 @@ public class AdvisorCharacter extends Group {
         this.onDragStarted = callback;
     }
     
+
+    
     /**
      * 지정된 위치로 걸어가기
      */

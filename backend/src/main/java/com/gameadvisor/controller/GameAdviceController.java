@@ -2,6 +2,8 @@ package com.gameadvisor.controller;
 
 import com.gameadvisor.model.GameAdviceRequest;
 import com.gameadvisor.model.GameAdviceResponse;
+import com.gameadvisor.model.ScreenAnalysisRequest;
+import com.gameadvisor.model.ScreenAnalysisResponse;
 import com.gameadvisor.service.GeminiService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -43,6 +45,35 @@ public class GameAdviceController {
             return ResponseEntity.internalServerError().body(errorResponse);
         }
     }
+    
+    @PostMapping("/screen")
+    public ResponseEntity<ScreenAnalysisResponse> analyzeScreen(@RequestBody ScreenAnalysisRequest request) {
+        log.info("화면 분석 요청 받음: 게임={}", request.getGameName());
+        
+        try {
+            ScreenAnalysisResponse response = geminiService.analyzeScreen(request);
+            
+            if (response.isSuccess()) {
+                return ResponseEntity.ok(response);
+            } else {
+                return ResponseEntity.badRequest().body(response);
+            }
+            
+        } catch (Exception e) {
+            log.error("화면 분석 처리 중 오류 발생", e);
+            
+            ScreenAnalysisResponse errorResponse = ScreenAnalysisResponse.builder()
+                    .analysis("서버 오류가 발생했습니다.")
+                    .advice("잠시 후 다시 시도해주세요.")
+                    .characterName("게임 어드바이저")
+                    .success(false)
+                    .errorMessage(e.getMessage())
+                    .build();
+                    
+            return ResponseEntity.internalServerError().body(errorResponse);
+        }
+    }
+
     
     @GetMapping("/test")
     public ResponseEntity<String> testEndpoint() {

@@ -36,6 +36,21 @@ public class GeminiRequest {
     public static class Part {
         @JsonProperty("text")
         private String text;
+        
+        @JsonProperty("inline_data")
+        private InlineData inlineData;
+    }
+    
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class InlineData {
+        @JsonProperty("mime_type")
+        private String mimeType;
+        
+        @JsonProperty("data")
+        private String data;
     }
     
     @Data

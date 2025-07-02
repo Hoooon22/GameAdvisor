@@ -20,6 +20,9 @@ public class GeminiRequest {
     @JsonProperty("generationConfig")
     private GenerationConfig generationConfig;
     
+    @JsonProperty("tools")
+    private List<Tool> tools;
+    
     @Data
     @Builder
     @NoArgsConstructor
@@ -72,5 +75,44 @@ public class GeminiRequest {
         
         @JsonProperty("stopSequences")
         private List<String> stopSequences;
+    }
+    
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class Tool {
+        @JsonProperty("function_declarations")
+        private List<FunctionDeclaration> functionDeclarations;
+    }
+    
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class FunctionDeclaration {
+        @JsonProperty("name")
+        private String name;
+        
+        @JsonProperty("description")
+        private String description;
+        
+        @JsonProperty("parameters")
+        private Parameters parameters;
+    }
+    
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class Parameters {
+        @JsonProperty("type")
+        private String type;
+        
+        @JsonProperty("properties")
+        private Object properties;
+        
+        @JsonProperty("required")
+        private List<String> required;
     }
 } 

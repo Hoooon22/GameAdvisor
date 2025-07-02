@@ -57,6 +57,21 @@ public class GeminiResponse {
     public static class Part {
         @JsonProperty("text")
         private String text;
+        
+        @JsonProperty("functionCall")
+        private FunctionCall functionCall;
+    }
+    
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class FunctionCall {
+        @JsonProperty("name")
+        private String name;
+        
+        @JsonProperty("args")
+        private Object args;
     }
     
     @Data

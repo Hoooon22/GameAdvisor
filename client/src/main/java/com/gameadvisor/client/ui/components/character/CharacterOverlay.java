@@ -54,11 +54,19 @@ public class CharacterOverlay {
     // 말풍선 표시 상태 추적
     private boolean isSpeechBubbleActive = false;
     
+    // 클릭 회피 관련 변수
+    private double lastClickX = -1;
+    private double lastClickY = -1;
+    private long lastClickTime = 0;
+    private static final double AVOIDANCE_DISTANCE = 150; // 클릭으로부터 피하는 거리
+    private static final long AVOIDANCE_DURATION = 3000; // 3초간 클릭 위치 기억
+    
     public CharacterOverlay(Pane overlayPane) {
         this.overlayPane = overlayPane;
         this.apiClient = new ApiClient();
         initializeComponents();
         setupIdleActivity();
+        setupClickDetection();
     }
     
     /**
@@ -67,6 +75,7 @@ public class CharacterOverlay {
     private void initializeComponents() {
         character = new AdvisorCharacter();
         speechBubble = new SpeechBubble();
+        speechBubble.setOnCloseCallback(this::onSpeechBubbleClosed); // 콜백 설정
         
         // 물리 효과 완료 시 착지 위치 기억 콜백 설정
         character.setOnPhysicsCompleted(() -> {
@@ -205,7 +214,7 @@ public class CharacterOverlay {
             Platform.runLater(() -> {
                 if (response.isSuccess()) {
                     character.setState(AdvisorCharacter.AnimationState.TALKING);
-                    makeCharacterSpeak(response.getAnalysis(), SpeechBubble.BubbleType.ADVICE);
+                    makeCharacterSpeak(response.getAnalysis(), SpeechBubble.BubbleType.STRATEGY);
                 } else {
                     character.setState(AdvisorCharacter.AnimationState.IDLE);
                     makeCharacterSpeak("공략 분석에 실패했습니다: " + response.getErrorMessage(), SpeechBubble.BubbleType.WARNING);
@@ -500,15 +509,48 @@ public class CharacterOverlay {
      */
     private void updateSpeechBubblePosition() {
         Platform.runLater(() -> {
-            speechBubble.positionAboveCharacter(
-                character.getLayoutX(), 
-                character.getLayoutY(), 
-                character.getCharacterWidth()
-            );
+            if (currentGameInfo != null) {
+                RECT rect = currentGameInfo.getRect();
+                speechBubble.positionAboveCharacter(
+                    character.getLayoutX(), 
+                    character.getLayoutY(), 
+                    character.getCharacterWidth(),
+                    rect.left,                    // 게임 창 왼쪽 경계
+                    rect.top,                     // 게임 창 위쪽 경계  
+                    rect.right,                   // 게임 창 오른쪽 경계
+                    rect.bottom                   // 게임 창 아래쪽 경계
+                );
+            } else {
+                // 게임 정보가 없으면 기본 메서드 사용
+                speechBubble.positionAboveCharacter(
+                    character.getLayoutX(), 
+                    character.getLayoutY(), 
+                    character.getCharacterWidth()
+                );
+            }
             updateScreenAnalysisButtonPosition();
         });
     }
     
+    /**
+     * 말풍선이 닫힐 때 호출되는 공통 처리 메서드
+     */
+    private void onSpeechBubbleClosed() {
+        isSpeechBubbleActive = false;
+        
+        // 자동 활동 재시작
+        if (isCharacterActive) {
+            startIdleActivity();
+        }
+        
+        // 캐릭터 상태를 IDLE로 복원
+        if (!character.isInPhysicsMode()) {
+            character.setState(AdvisorCharacter.AnimationState.IDLE);
+        }
+        
+        System.out.println("[DEBUG] 말풍선 종료 - 다른 동작들 재개");
+    }
+
     /**
      * 캐릭터의 실제 위치로 추적 변수 동기화 (드래그 중이거나 말풍선 표시 중에는 동기화하지 않음)
      */
@@ -550,38 +592,42 @@ public class CharacterOverlay {
             updateSpeechBubblePosition();
             speechBubble.showMessage(message, bubbleType);
             
-            // 텍스트 길이에 따른 표시 시간 계산
-            double displayDuration = speechBubble.calculateDisplayDuration(message);
-            
-            // 말풍선이 표시되는 동안 지속적으로 위치 업데이트 (물리 모드든 아니든)
-            Timeline bubbleUpdateTimer = new Timeline(
-                new KeyFrame(Duration.millis(50), e -> {
-                    if (!character.isBeingDragged()) { // 드래그 중이 아닐 때만 업데이트
-                        updateSpeechBubblePosition();
-                    }
-                })
-            );
-            bubbleUpdateTimer.setCycleCount((int)(displayDuration * 20)); // 표시 시간에 맞춰 업데이트 횟수 계산
-            bubbleUpdateTimer.setOnFinished(e -> {
-                // 말풍선이 완전히 사라진 후 다른 동작들 재개
-                Platform.runLater(() -> {
-                    isSpeechBubbleActive = false;
-                    
-                    // 자동 활동 재시작
-                    if (isCharacterActive) {
-                        startIdleActivity();
-                    }
-                    
-                    // 캐릭터 상태를 IDLE로 복원
-                    if (!character.isInPhysicsMode()) {
-                        character.setState(AdvisorCharacter.AnimationState.IDLE);
-                    }
-                    
-                    System.out.println("[DEBUG] 말풍선 종료 - 다른 동작들 재개");
+            // STRATEGY 타입이 아닌 경우만 자동 종료 타이머 설정
+            if (bubbleType != SpeechBubble.BubbleType.STRATEGY) {
+                // 텍스트 길이에 따른 표시 시간 계산
+                double displayDuration = speechBubble.calculateDisplayDuration(message);
+                
+                // 말풍선이 표시되는 동안 지속적으로 위치 업데이트 (물리 모드든 아니든)
+                Timeline bubbleUpdateTimer = new Timeline(
+                    new KeyFrame(Duration.millis(50), e -> {
+                        if (!character.isBeingDragged()) { // 드래그 중이 아닐 때만 업데이트
+                            updateSpeechBubblePosition();
+                        }
+                    })
+                );
+                bubbleUpdateTimer.setCycleCount((int)(displayDuration * 20)); // 표시 시간에 맞춰 업데이트 횟수 계산
+                bubbleUpdateTimer.setOnFinished(e -> {
+                    // 말풍선이 완전히 사라진 후 다른 동작들 재개
+                    Platform.runLater(() -> {
+                        onSpeechBubbleClosed();
+                    });
                 });
-            });
-            bubbleUpdateTimer.play();
-            System.out.println("[DEBUG] 말풍선 표시 시작 - 다른 동작들 일시 중단 (" + displayDuration + "초간)");
+                bubbleUpdateTimer.play();
+                System.out.println("[DEBUG] 말풍선 표시 시작 - 다른 동작들 일시 중단 (" + displayDuration + "초간)");
+            } else {
+                // STRATEGY 타입은 지속 표시되므로 위치 업데이트만 무한히 수행
+                Timeline strategyUpdateTimer = new Timeline(
+                    new KeyFrame(Duration.millis(100), e -> {
+                        if (!character.isBeingDragged() && speechBubble.isShowing()) {
+                            updateSpeechBubblePosition();
+                        }
+                    })
+                );
+                strategyUpdateTimer.setCycleCount(Timeline.INDEFINITE);
+                strategyUpdateTimer.play();
+                currentBubbleUpdateTimer = strategyUpdateTimer; // 참조 저장하여 나중에 정리 가능
+                System.out.println("[DEBUG] 공략 말풍선 표시 시작 - 지속 표시 모드");
+            }
         });
     }
     
@@ -640,11 +686,35 @@ public class CharacterOverlay {
     }
     
     /**
+     * 클릭 감지 설정 - 게임 화면 클릭을 감지하여 캐릭터가 피하도록 함
+     */
+    private void setupClickDetection() {
+        overlayPane.setOnMouseClicked(e -> {
+            // 클릭 위치가 캐릭터나 버튼이 아닌 경우에만 회피 동작
+            if (!isCharacterActive) return;
+            
+            // 캐릭터나 버튼 영역이 아닌 경우에만 처리 (게임 화면 클릭)
+            if (e.getTarget() == overlayPane) {
+                lastClickX = e.getSceneX();
+                lastClickY = e.getSceneY();
+                lastClickTime = System.currentTimeMillis();
+                
+                System.out.println("[DEBUG] 게임 화면 클릭 감지: (" + (int)lastClickX + ", " + (int)lastClickY + ")");
+                
+                // 즉시 회피 동작 시작
+                startAvoidanceMovement();
+                
+                e.consume(); // 이벤트 소비하여 게임에 영향 주지 않음
+            }
+        });
+    }
+
+    /**
      * 자동 활동 설정
      */
     private void setupIdleActivity() {
         idleActivityTimer = new Timeline(
-            new KeyFrame(Duration.seconds(10), e -> performRandomActivity()) // 10초마다 활동
+            new KeyFrame(Duration.seconds(5), e -> checkForAvoidanceMovement()) // 5초마다 회피 체크
         );
         idleActivityTimer.setCycleCount(Timeline.INDEFINITE);
     }
@@ -685,9 +755,9 @@ public class CharacterOverlay {
     }
     
     /**
-     * 랜덤 활동 수행
+     * 클릭 회피 움직임 체크 - 주기적으로 호출되어 클릭 위치를 확인하고 회피 동작 수행
      */
-    private void performRandomActivity() {
+    private void checkForAvoidanceMovement() {
         if (!isCharacterActive) return;
         
         // 캐릭터가 물리 효과 중이거나 드래그 중이거나 말풍선이 표시 중이면 자동 활동하지 않음
@@ -695,20 +765,30 @@ public class CharacterOverlay {
             return;
         }
         
-        int activity = random.nextInt(4);
+        // 최근 클릭이 있었다면 회피 동작 수행
+        long currentTime = System.currentTimeMillis();
+        if (lastClickTime > 0 && (currentTime - lastClickTime) < AVOIDANCE_DURATION) {
+            startAvoidanceMovement();
+        } else {
+            // 클릭이 없거나 시간이 지났으면 간단한 행동들만 수행
+            performSimpleActivity();
+        }
+    }
+    
+    /**
+     * 간단한 활동 수행 (클릭 회피가 아닌 경우)
+     */
+    private void performSimpleActivity() {
+        int activity = random.nextInt(3); // 걷기 제외하고 3가지만
         
         switch (activity) {
             case 0:
-                // 걷기
-                makeCharacterWalk();
-                break;
-            case 1:
                 // 생각하기
                 Platform.runLater(() -> {
                     character.setState(AdvisorCharacter.AnimationState.THINKING);
                 });
                 break;
-            case 2:
+            case 1:
                 // 조언 말하기
                 String[] tips = {
                     "열심히 플레이하고 계시네요! 👍",
@@ -719,13 +799,127 @@ public class CharacterOverlay {
                 };
                 makeCharacterSpeak(tips[random.nextInt(tips.length)], SpeechBubble.BubbleType.ADVICE);
                 break;
-            case 3:
+            case 2:
                 // 가만히 서있기 (기본 상태)
                 Platform.runLater(() -> {
                     character.setState(AdvisorCharacter.AnimationState.IDLE);
                 });
                 break;
         }
+    }
+    
+    /**
+     * 클릭 위치로부터 회피 동작 시작
+     */
+    private void startAvoidanceMovement() {
+        if (!isCharacterActive || currentGameInfo == null || character.isInPhysicsMode() || character.isBeingDragged() || isSpeechBubbleActive) {
+            return;
+        }
+        
+        if (lastClickX < 0 || lastClickY < 0) {
+            return; // 클릭 위치가 없음
+        }
+        
+        double characterCenterX = character.getLayoutX() + character.getCharacterWidth() / 2;
+        double characterCenterY = character.getLayoutY() + character.getCharacterHeight() / 2;
+        
+        // 클릭 위치와 캐릭터 간의 거리 계산
+        double distanceToClick = Math.sqrt(
+            Math.pow(characterCenterX - lastClickX, 2) + 
+            Math.pow(characterCenterY - lastClickY, 2)
+        );
+        
+        System.out.println("[DEBUG] 클릭과의 거리: " + (int)distanceToClick + "px");
+        
+        // 회피 거리 내에 있으면 피하는 움직임 수행
+        if (distanceToClick < AVOIDANCE_DISTANCE) {
+            System.out.println("[DEBUG] 클릭 위치에서 회피 시작!");
+            moveAwayFromClick();
+        }
+    }
+    
+    /**
+     * 클릭 위치로부터 피하는 움직임 수행
+     */
+    private void moveAwayFromClick() {
+        RECT rect = currentGameInfo.getRect();
+        
+        double characterCenterX = character.getLayoutX() + character.getCharacterWidth() / 2;
+        double characterCenterY = character.getLayoutY() + character.getCharacterHeight() / 2;
+        
+        // 클릭 위치에서 반대 방향으로 피하는 벡터 계산
+        double avoidanceVectorX = characterCenterX - lastClickX;
+        double avoidanceVectorY = characterCenterY - lastClickY;
+        
+        // 벡터 정규화
+        double vectorLength = Math.sqrt(avoidanceVectorX * avoidanceVectorX + avoidanceVectorY * avoidanceVectorY);
+        if (vectorLength > 0) {
+            avoidanceVectorX /= vectorLength;
+            avoidanceVectorY /= vectorLength;
+        }
+        
+        // 피하는 거리 (더 멀리 피하도록)
+        double avoidanceDistance = 120;
+        
+        // 목표 위치 계산 (클릭 위치에서 반대 방향으로)
+        double targetX = characterCenterX + avoidanceVectorX * avoidanceDistance;
+        double targetY = rect.bottom - character.getCharacterHeight() - 5; // Y는 하단 고정
+        
+        // 게임 창 경계 내로 제한
+        double minX = rect.left + 20;
+        double maxX = rect.right - character.getCharacterWidth() - 20;
+        
+        if (maxX <= minX) return; // 게임 창이 너무 작으면 이동하지 않음
+        
+        // X 좌표를 게임 창 경계 내로 클램핑
+        final double finalTargetX = Math.max(minX, Math.min(maxX, targetX - character.getCharacterWidth() / 2));
+        
+        System.out.println("[DEBUG] 회피 목표 위치: (" + (int)finalTargetX + ", " + (int)targetY + ")");
+        
+        Platform.runLater(() -> {
+            // 캐릭터의 현재 실제 위치 기반으로 상대적 이동 계산
+            double currentX = character.getLayoutX();
+            double deltaX = finalTargetX - currentX;
+            
+            // 이동 거리가 너무 작으면 최소한의 이동 보장
+            if (Math.abs(deltaX) < 30) {
+                deltaX = deltaX >= 0 ? 50 : -50;
+                // 경계 체크
+                if (currentX + deltaX < minX) deltaX = minX - currentX;
+                if (currentX + deltaX > maxX) deltaX = maxX - currentX;
+            }
+            
+            System.out.println("[DEBUG] 회피 이동: deltaX=" + (int)deltaX);
+            
+            character.walkTo(deltaX, 0);
+            
+            // 이전 Timeline들 중단
+            stopActiveTimelines();
+            
+            // 걷기가 완료된 후 위치 동기화 및 착지 위치 업데이트
+            currentWalkSyncTimer = new Timeline(
+                new KeyFrame(Duration.seconds(2.1), e -> {
+                    if (!character.isBeingDragged()) { // 드래그 중이 아닐 때만 동기화
+                        syncCharacterPosition(); // 걷기 완료 후 동기화
+                        saveLandingPosition(); // 새로운 위치를 착지 위치로 저장
+                    }
+                    currentWalkSyncTimer = null; // Timer 참조 해제
+                })
+            );
+            currentWalkSyncTimer.play();
+            
+            // 걷는 동안 말풍선 위치 지속 업데이트
+            currentBubbleUpdateTimer = new Timeline(
+                new KeyFrame(Duration.millis(100), e -> {
+                    if (!character.isBeingDragged()) { // 드래그 중이 아닐 때만 업데이트
+                        updateSpeechBubblePosition();
+                    }
+                })
+            );
+            currentBubbleUpdateTimer.setCycleCount(20); // 2초간 업데이트
+            currentBubbleUpdateTimer.setOnFinished(e -> currentBubbleUpdateTimer = null); // Timer 참조 해제
+            currentBubbleUpdateTimer.play();
+        });
     }
     
     /**

@@ -1,4 +1,4 @@
-package com.gameadvisor.client.ui.components;
+package com.gameadvisor.client.ui.components.character;
 
 import javafx.animation.FadeTransition;
 import javafx.animation.Timeline;
@@ -200,14 +200,17 @@ public class SpeechBubble extends Group {
     }
     
     /**
-     * 말풍선 위치를 캐릭터 위에 설정
+     * 캐릭터 위에 말풍선 위치시키기
      */
     public void positionAboveCharacter(double characterX, double characterY, double characterWidth) {
-        // 말풍선을 캐릭터 중앙 위에 배치
-        this.setLayoutX(characterX + characterWidth / 2 - bubbleContainer.getWidth() / 2);
-        this.setLayoutY(characterY - bubbleContainer.getHeight() - 20); // 20px 간격
+        // 말풍선을 캐릭터 위쪽에 위치
+        double bubbleX = characterX + (characterWidth / 2) - (bubbleContainer.getWidth() / 2);
+        double bubbleY = characterY - bubbleContainer.getHeight() - 20; // 20픽셀 간격
         
-        // 꼬리 위치 재조정
+        this.setLayoutX(bubbleX);
+        this.setLayoutY(bubbleY);
+        
+        // 꼬리를 말풍선 중앙 하단에 위치
         bubbleTail.setLayoutX(bubbleContainer.getWidth() / 2);
         bubbleTail.setLayoutY(bubbleContainer.getHeight());
     }

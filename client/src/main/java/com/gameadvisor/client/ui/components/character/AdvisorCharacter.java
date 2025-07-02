@@ -1,4 +1,4 @@
-package com.gameadvisor.client.ui.components;
+package com.gameadvisor.client.ui.components.character;
 
 import javafx.animation.Animation;
 import javafx.animation.KeyFrame;
@@ -78,6 +78,9 @@ public class AdvisorCharacter extends Group {
     // 물리 효과 완료 콜백
     private Runnable onPhysicsCompleted;
     
+    // 드래그 시작 콜백
+    private Runnable onDragStarted;
+    
     public AdvisorCharacter() {
         initializeCharacter();
         setupIdleAnimation();
@@ -107,15 +110,15 @@ public class AdvisorCharacter extends Group {
         body.setArcWidth(10);
         body.setArcHeight(10);
         
-        // 팔
-        leftArm = new Rectangle(CHARACTER_WIDTH / 2 - 25, 40, 8, 25);
+        // 팔 (어깨 위치로 이동)
+        leftArm = new Rectangle(CHARACTER_WIDTH / 2 - 25, 35, 8, 25);
         leftArm.setFill(Color.LIGHTBLUE);
         leftArm.setStroke(Color.DARKBLUE);
         leftArm.setStrokeWidth(1);
         leftArm.setArcWidth(4);
         leftArm.setArcHeight(4);
         
-        rightArm = new Rectangle(CHARACTER_WIDTH / 2 + 17, 40, 8, 25);
+        rightArm = new Rectangle(CHARACTER_WIDTH / 2 + 17, 35, 8, 25);
         rightArm.setFill(Color.LIGHTBLUE);
         rightArm.setStroke(Color.DARKBLUE);
         rightArm.setStrokeWidth(1);
@@ -207,16 +210,18 @@ public class AdvisorCharacter extends Group {
                 rightArm.setRotate(0);
             }),
             new KeyFrame(Duration.millis(250), e -> {
+                // 드래그 중이면 애니메이션 중지
                 if (isDragging) {
                     walkAnimation.stop();
                     return;
                 }
-                leftLeg.setRotate(20);
-                rightLeg.setRotate(-20);
-                leftArm.setRotate(-15);
-                rightArm.setRotate(15);
+                leftLeg.setRotate(10);
+                rightLeg.setRotate(-10);
+                leftArm.setRotate(-5);
+                rightArm.setRotate(5);
             }),
             new KeyFrame(Duration.millis(500), e -> {
+                // 드래그 중이면 애니메이션 중지
                 if (isDragging) {
                     walkAnimation.stop();
                     return;
@@ -227,24 +232,15 @@ public class AdvisorCharacter extends Group {
                 rightArm.setRotate(0);
             }),
             new KeyFrame(Duration.millis(750), e -> {
+                // 드래그 중이면 애니메이션 중지
                 if (isDragging) {
                     walkAnimation.stop();
                     return;
                 }
-                leftLeg.setRotate(-20);
-                rightLeg.setRotate(20);
-                leftArm.setRotate(15);
-                rightArm.setRotate(-15);
-            }),
-            new KeyFrame(Duration.millis(1000), e -> {
-                if (isDragging) {
-                    walkAnimation.stop();
-                    return;
-                }
-                leftLeg.setRotate(0);
-                rightLeg.setRotate(0);
-                leftArm.setRotate(0);
-                rightArm.setRotate(0);
+                leftLeg.setRotate(-10);
+                rightLeg.setRotate(10);
+                leftArm.setRotate(5);
+                rightArm.setRotate(-5);
             })
         );
         walkAnimation.setCycleCount(Animation.INDEFINITE);
@@ -257,11 +253,9 @@ public class AdvisorCharacter extends Group {
         // 캐릭터가 마우스 이벤트를 받을 수 있도록 설정
         this.setPickOnBounds(true);
         
-        // 마우스 커서 변경
+        // 마우스 커서 변경 (날아가는 중에도 잡을 수 있음을 표시)
         this.setOnMouseEntered(e -> {
-            if (!isFlying) {
-                this.setCursor(Cursor.HAND);
-            }
+            this.setCursor(Cursor.HAND);
             e.consume(); // 이벤트 소비하여 게임으로 전달 방지
         });
         
@@ -270,44 +264,69 @@ public class AdvisorCharacter extends Group {
             e.consume();
         });
         
-        // 테스트용: 더블클릭으로 즉시 날리기
+        // 테스트용: 더블클릭으로 즉시 날리기 (비활성화 - 실제 드래그와 충돌)
+        /*
         this.setOnMouseClicked(e -> {
-            if (e.getClickCount() == 2 && !isFlying) {
+            if (e.getClickCount() == 2 && !isDragging) {
                 System.out.println("[DEBUG] 더블클릭 테스트 - 캐릭터를 오른쪽으로 날립니다!");
                 velocityX = 100; // 오른쪽으로
-                velocityY = -50; // 약간 위로
+                velocityY = -150; // 위로
                 startFlying();
             }
             e.consume();
         });
+        */
         
-        // 마우스 드래그 시작
+        // 마우스 드래그 시작 (공중에서도 가능)
         this.setOnMousePressed(e -> {
-            if (!isFlying) {
-                isDragging = true;
-                mouseStartX = e.getSceneX();
-                mouseStartY = e.getSceneY();
-                dragStartX = this.getLayoutX();
-                dragStartY = this.getLayoutY();
-                
-                System.out.println("[DEBUG] 드래그 시작 - 마우스: (" + (int)mouseStartX + ", " + (int)mouseStartY + 
-                                 "), 캐릭터: (" + (int)dragStartX + ", " + (int)dragStartY + ")");
-                System.out.println("[DEBUG] 경계값 - minX: " + minX + ", maxX: " + maxX + ", minY: " + minY + ", maxY: " + maxY);
-                
-                setState(AnimationState.DRAGGING);
-                
-                // 드래그 중 캐릭터가 더 명확하게 보이도록
-                this.setOpacity(0.9);
-                this.setScaleX(1.1);
-                this.setScaleY(1.1);
-                
-                setupDraggingAnimation();
-            }
+            // 이벤트를 먼저 소비
             e.consume();
+            
+            // 왼쪽 마우스 버튼이 아니거나 이미 드래그 중이면 무시
+            if (!e.isPrimaryButtonDown() || isDragging) {
+                return;
+            }
+            
+            isDragging = true;
+            mouseStartX = e.getSceneX();
+            mouseStartY = e.getSceneY();
+            dragStartX = this.getLayoutX();
+            dragStartY = this.getLayoutY();
+            
+            System.out.println("[DEBUG] 드래그 시작 - 마우스: (" + (int)mouseStartX + ", " + (int)mouseStartY + 
+                             "), 캐릭터: (" + (int)dragStartX + ", " + (int)dragStartY + ")");
+            System.out.println("[DEBUG] 현재 상태: " + currentState + ", isFlying: " + isFlying);
+            
+            // 날아가는 중이었다면 물리 효과 중단
+            if (isFlying) {
+                System.out.println("[DEBUG] 공중에서 캐릭터를 잡음 - 물리 효과 중단");
+                isFlying = false;
+                physicsAnimation.stop();
+                velocityX = 0;
+                velocityY = 0;
+            }
+            
+            // 드래그 상태 즉시 설정 (Platform.runLater 제거)
+            setState(AnimationState.DRAGGING);
+            
+            // 드래그 중 캐릭터가 더 명확하게 보이도록
+            this.setOpacity(0.9);
+            this.setScaleX(1.1);
+            this.setScaleY(1.1);
+            
+            setupDraggingAnimation();
+            
+            // 드래그 시작 콜백 호출 (마지막에 실행)
+            if (onDragStarted != null) {
+                onDragStarted.run(); // Platform.runLater 제거
+            }
         });
         
         // 마우스 드래그 중
         this.setOnMouseDragged(e -> {
+            // 이벤트를 먼저 소비하여 다른 핸들러가 처리하지 못하게 함
+            e.consume();
+            
             if (isDragging) {
                 // 드래그 중에는 모든 다른 애니메이션 정지
                 stopAllAnimations();
@@ -315,11 +334,9 @@ public class AdvisorCharacter extends Group {
                 double deltaX = e.getSceneX() - mouseStartX;
                 double deltaY = e.getSceneY() - mouseStartY;
                 
-                // 부드러운 위치 업데이트
-                Platform.runLater(() -> {
-                    this.setLayoutX(dragStartX + deltaX);
-                    this.setLayoutY(dragStartY + deltaY);
-                });
+                // 즉시 위치 업데이트 (Platform.runLater 제거로 지연 없애기)
+                this.setLayoutX(dragStartX + deltaX);
+                this.setLayoutY(dragStartY + deltaY);
                 
                 // 드래그 거리에 따른 시각적 피드백
                 double distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
@@ -330,26 +347,28 @@ public class AdvisorCharacter extends Group {
                 this.setScaleY(1.1 + intensity * 0.2);
                 this.setRotate(Math.atan2(deltaY, deltaX) * 180 / Math.PI * 0.1); // 살짝 기울임
             }
-            e.consume();
         });
         
         // 마우스 드래그 종료 (캐릭터 날리기)
         this.setOnMouseReleased(e -> {
+            // 이벤트를 먼저 소비
+            e.consume();
+            
             if (isDragging) {
                 isDragging = false;
-                
-                // 시각적 효과 원복
-                this.setOpacity(1.0);
-                this.setScaleX(1.0);
-                this.setScaleY(1.0);
-                this.setRotate(0);
                 
                 // 드래그 거리와 속도 계산
                 double deltaX = e.getSceneX() - mouseStartX;
                 double deltaY = e.getSceneY() - mouseStartY;
                 double distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
                 
-                System.out.println("[DEBUG] 드래그 거리: " + distance + ", deltaX: " + deltaX + ", deltaY: " + deltaY);
+                System.out.println("[DEBUG] 드래그 종료 - 거리: " + distance + ", deltaX: " + deltaX + ", deltaY: " + deltaY);
+                
+                // 시각적 효과 즉시 원복 (Platform.runLater 제거)
+                this.setOpacity(1.0);
+                this.setScaleX(1.0);
+                this.setScaleY(1.0);
+                this.setRotate(0);
                 
                 if (distance > 15) { // 최소 드래그 거리
                     // 속도 계산 개선 (훨씬 더 강한 힘)
@@ -366,7 +385,6 @@ public class AdvisorCharacter extends Group {
                     setState(AnimationState.IDLE);
                 }
             }
-            e.consume();
         });
     }
     
@@ -384,7 +402,8 @@ public class AdvisorCharacter extends Group {
      * 물리 효과 업데이트 (16ms마다 호출)
      */
     private void updatePhysics() {
-        if (!isFlying) return;
+        // 드래그 중이거나 날아가지 않는 중이면 물리 업데이트 하지 않음
+        if (!isFlying || isDragging) return;
         
         double deltaTime = 0.05; // 더 큰 시간 단위로 움직임을 더 명확하게
         
@@ -510,110 +529,93 @@ public class AdvisorCharacter extends Group {
         velocityY = 0;
         physicsAnimation.stop();
         
-        // 위치 동기화 콜백 호출
-        if (onPhysicsCompleted != null) {
+        // 위치 동기화 콜백 호출 (드래그 중이 아닐 때만)
+        if (onPhysicsCompleted != null && !isDragging) {
             Platform.runLater(onPhysicsCompleted);
         }
         
-        // 잠시 기절 상태로 변경 후 idle로 복귀
-        setState(AnimationState.STUNNED);
-        
-        Timeline recoveryTimer = new Timeline(
-            new KeyFrame(Duration.seconds(1), e -> setState(AnimationState.IDLE))
-        );
-        recoveryTimer.play();
+        // 잠시 기절 상태로 변경 후 idle로 복귀 (드래그 중이 아닐 때만)
+        if (!isDragging) {
+            setState(AnimationState.STUNNED);
+            
+            Timeline recoveryTimer = new Timeline(
+                new KeyFrame(Duration.seconds(1), e -> {
+                    if (!isDragging) { // 회복할 때도 드래그 중이 아닌지 확인
+                        setState(AnimationState.IDLE);
+                    }
+                })
+            );
+            recoveryTimer.play();
+        }
     }
     
     /**
-     * 충돌 효과 생성 (더 부드럽고 재미있는 버전)
+     * 충돌 효과 생성
      */
     private void createCollisionEffect() {
-        // 색상 변화 효과 (더 부드럽게)
-        Timeline colorEffect = new Timeline(
+        // 충돌 시 캐릭터가 잠시 빨갛게 변함
+        Color originalColor = (Color) head.getFill();
+        
+        Timeline collisionEffect = new Timeline(
             new KeyFrame(Duration.millis(0), e -> {
-                head.setFill(Color.ORANGE);
-                body.setFill(Color.ORANGE);
+                head.setFill(Color.RED);
+                body.setFill(Color.LIGHTCORAL);
             }),
-            new KeyFrame(Duration.millis(50), e -> {
-                head.setFill(Color.YELLOW);
-                body.setFill(Color.YELLOW);
-            }),
-            new KeyFrame(Duration.millis(150), e -> {
-                head.setFill(Color.LIGHTBLUE);
+            new KeyFrame(Duration.millis(100), e -> {
+                head.setFill(originalColor);
                 body.setFill(Color.LIGHTCYAN);
             })
         );
-        colorEffect.play();
+        collisionEffect.play();
         
-        // 더 부드러운 진동 효과
-        Timeline shakeEffect = new Timeline();
-        for (int i = 0; i < 15; i++) {
-            int finalI = i;
-            double intensity = 1.0 - (finalI / 15.0); // 점점 약해지는 진동
-            shakeEffect.getKeyFrames().add(
-                new KeyFrame(Duration.millis(i * 15), e -> {
-                    double offsetX = Math.sin(finalI * 0.8) * intensity * 3;
-                    double offsetY = Math.cos(finalI * 0.8) * intensity * 1.5;
-                    characterBody.setTranslateX(offsetX);
-                    characterBody.setTranslateY(offsetY);
-                })
-            );
-        }
-        shakeEffect.getKeyFrames().add(
-            new KeyFrame(Duration.millis(225), e -> {
-                characterBody.setTranslateX(0);
-                characterBody.setTranslateY(0);
-            })
+        // 충돌 시 약간 진동 효과
+        Timeline shakeEffect = new Timeline(
+            new KeyFrame(Duration.millis(0), e -> this.setTranslateX(0)),
+            new KeyFrame(Duration.millis(25), e -> this.setTranslateX(-2)),
+            new KeyFrame(Duration.millis(50), e -> this.setTranslateX(2)),
+            new KeyFrame(Duration.millis(75), e -> this.setTranslateX(-1)),
+            new KeyFrame(Duration.millis(100), e -> this.setTranslateX(0))
         );
         shakeEffect.play();
-        
-        // 눈이 어지러워하는 효과
-        Timeline eyeEffect = new Timeline(
-            new KeyFrame(Duration.millis(0), e -> {
-                leftEye.setScaleX(0.5);
-                rightEye.setScaleX(0.5);
-            }),
-            new KeyFrame(Duration.millis(100), e -> {
-                leftEye.setScaleX(1.5);
-                rightEye.setScaleX(1.5);
-            }),
-            new KeyFrame(Duration.millis(200), e -> {
-                leftEye.setScaleX(1.0);
-                rightEye.setScaleX(1.0);
-            })
-        );
-        eyeEffect.play();
     }
     
     /**
-     * 경계 설정 (게임 창 크기에 맞춰)
+     * 경계 설정 (게임 창 크기에 맞춤)
      */
     public void setBounds(double minX, double minY, double maxX, double maxY) {
         this.minX = minX;
         this.minY = minY;
         this.maxX = maxX;
         this.maxY = maxY;
+        System.out.println("[DEBUG] 캐릭터 경계값 설정: minX=" + minX + ", minY=" + minY + ", maxX=" + maxX + ", maxY=" + maxY);
     }
     
     /**
-     * 캐릭터가 물리 효과 중인지 확인
+     * 물리 모드 중인지 확인
      */
     public boolean isInPhysicsMode() {
-        return isDragging || isFlying;
+        return isFlying;
     }
     
     /**
-     * 캐릭터가 드래그 중인지 확인
+     * 드래그 중인지 확인
      */
     public boolean isBeingDragged() {
         return isDragging;
     }
     
     /**
-     * 물리 효과 완료 시 호출될 콜백 설정
+     * 물리 효과 완료 콜백 설정
      */
     public void setOnPhysicsCompleted(Runnable callback) {
         this.onPhysicsCompleted = callback;
+    }
+    
+    /**
+     * 드래그 시작 콜백 설정
+     */
+    public void setOnDragStarted(Runnable callback) {
+        this.onDragStarted = callback;
     }
     
     /**
@@ -631,12 +633,28 @@ public class AdvisorCharacter extends Group {
         setState(AnimationState.WALKING);
         
         TranslateTransition moveTransition = new TranslateTransition(Duration.seconds(2), this);
-        moveTransition.setToX(x);
-        moveTransition.setToY(y);
+        moveTransition.setByX(x);
+        moveTransition.setByY(y);
         
         moveTransition.setOnFinished(e -> {
             // 완료 시에도 드래그 중이 아닐 때만 IDLE 상태로
             if (!isDragging) {
+                // 실제 레이아웃 위치에 반영
+                double currentLayoutX = this.getLayoutX();
+                double currentLayoutY = this.getLayoutY();
+                double translateX = this.getTranslateX();
+                double translateY = this.getTranslateY();
+                
+                // 새로운 위치 계산
+                double newLayoutX = currentLayoutX + translateX;
+                double newLayoutY = currentLayoutY + translateY;
+                
+                // 실제 레이아웃 위치로 설정하고 translate 초기화
+                this.setLayoutX(newLayoutX);
+                this.setLayoutY(newLayoutY);
+                this.setTranslateX(0);
+                this.setTranslateY(0);
+                
                 setState(AnimationState.IDLE);
             }
         });
@@ -644,49 +662,38 @@ public class AdvisorCharacter extends Group {
     }
     
     /**
-     * 애니메이션 상태 설정
+     * 애니메이션 상태 변경
      */
     public void setState(AnimationState state) {
-        // 드래그 중일 때는 외부에서 상태 변경 방지 (드래그 관련 상태는 제외)
-        if (isDragging && state != AnimationState.DRAGGING && state != AnimationState.FLYING) {
-            return;
-        }
+        if (currentState == state) return;
         
-        // 기존 애니메이션 중지
-        if (idleAnimation != null) idleAnimation.stop();
-        if (walkAnimation != null) walkAnimation.stop();
+        // 이전 애니메이션 정지
+        stopAllAnimations();
         
         currentState = state;
         
         switch (state) {
             case IDLE:
-                // 드래그 중이 아닐 때만 idle 애니메이션 시작
-                if (!isDragging) {
-                    idleAnimation.play();
-                }
+                setupIdleAnimation();
+                idleAnimation.play();
                 break;
             case WALKING:
                 setupWalkAnimation();
                 walkAnimation.play();
                 break;
             case TALKING:
-                // 말하기 애니메이션 (눈 깜빡이기 등)
                 setupTalkingAnimation();
                 break;
             case THINKING:
-                // 생각하기 애니메이션
                 setupThinkingAnimation();
                 break;
             case DRAGGING:
-                // 드래그 애니메이션
                 setupDraggingAnimation();
                 break;
             case FLYING:
-                // 날아가는 애니메이션
                 setupFlyingAnimation();
                 break;
             case STUNNED:
-                // 기절 애니메이션
                 setupStunnedAnimation();
                 break;
         }
@@ -696,198 +703,191 @@ public class AdvisorCharacter extends Group {
      * 말하기 애니메이션 설정
      */
     private void setupTalkingAnimation() {
-        Timeline talkAnimation = new Timeline(
+        Timeline talkingAnimation = new Timeline(
             new KeyFrame(Duration.millis(0), e -> {
-                if (isDragging) return;
-                leftEye.setScaleY(1.0);
-                rightEye.setScaleY(1.0);
+                head.setScaleY(1.0);
+                body.setScaleY(1.0);
             }),
             new KeyFrame(Duration.millis(300), e -> {
-                if (isDragging) return;
-                leftEye.setScaleY(0.2);
-                rightEye.setScaleY(0.2);
+                head.setScaleY(1.1);
+                body.setScaleY(1.05);
             }),
-            new KeyFrame(Duration.millis(400), e -> {
-                if (isDragging) return;
-                leftEye.setScaleY(1.0);
-                rightEye.setScaleY(1.0);
+            new KeyFrame(Duration.millis(600), e -> {
+                head.setScaleY(1.0);
+                body.setScaleY(1.0);
             })
         );
-        talkAnimation.setCycleCount(3);
-        talkAnimation.play();
+        talkingAnimation.setCycleCount(3); // 3번 반복
+        talkingAnimation.setOnFinished(e -> {
+            if (!isDragging) {
+                setState(AnimationState.IDLE);
+            }
+        });
+        talkingAnimation.play();
     }
     
     /**
      * 생각하기 애니메이션 설정
      */
     private void setupThinkingAnimation() {
-        Timeline thinkAnimation = new Timeline(
+        Timeline thinkingAnimation = new Timeline(
             new KeyFrame(Duration.millis(0), e -> {
-                if (isDragging) return;
                 head.setRotate(0);
-            }),
-            new KeyFrame(Duration.millis(500), e -> {
-                if (isDragging) return;
-                head.setRotate(-10);
+                leftArm.setRotate(0);
+                rightArm.setRotate(0);
             }),
             new KeyFrame(Duration.millis(1000), e -> {
-                if (isDragging) return;
-                head.setRotate(10);
+                head.setRotate(5);
+                leftArm.setRotate(10);
+                rightArm.setRotate(-5);
             }),
-            new KeyFrame(Duration.millis(1500), e -> {
-                if (isDragging) return;
+            new KeyFrame(Duration.millis(2000), e -> {
+                head.setRotate(-5);
+                leftArm.setRotate(-5);
+                rightArm.setRotate(10);
+            }),
+            new KeyFrame(Duration.millis(3000), e -> {
                 head.setRotate(0);
+                leftArm.setRotate(0);
+                rightArm.setRotate(0);
             })
         );
-        thinkAnimation.setCycleCount(2);
-        thinkAnimation.setOnFinished(e -> {
-            // 완료 시에도 드래그 중이 아닐 때만 IDLE 상태로
+        thinkingAnimation.setCycleCount(2); // 2번 반복
+        thinkingAnimation.setOnFinished(e -> {
             if (!isDragging) {
                 setState(AnimationState.IDLE);
             }
         });
-        thinkAnimation.play();
+        thinkingAnimation.play();
     }
     
     /**
      * 드래그 애니메이션 설정
      */
     private void setupDraggingAnimation() {
-        stopAllAnimations();
-        
-        // 드래그 중에는 팔다리가 벌어지는 애니메이션
-        Timeline dragAnimation = new Timeline(
+        Timeline draggingAnimation = new Timeline(
             new KeyFrame(Duration.millis(0), e -> {
-                leftArm.setRotate(45);
-                rightArm.setRotate(-45);
-                leftLeg.setRotate(15);
-                rightLeg.setRotate(-15);
+                // 드래그 시작 시 약간 확대
                 head.setScaleX(1.1);
                 head.setScaleY(1.1);
-                
-                // 눈이 놀란 표정으로 (타원형)
-                leftEye.setScaleX(1.3);
-                leftEye.setScaleY(1.6);
-                rightEye.setScaleX(1.3);
-                rightEye.setScaleY(1.6);
+                body.setScaleX(1.05);
+                body.setScaleY(1.05);
+            }),
+            new KeyFrame(Duration.millis(100), e -> {
+                // 진동 효과
+                head.setRotate(2);
+                body.setRotate(1);
+            }),
+            new KeyFrame(Duration.millis(200), e -> {
+                head.setRotate(-2);
+                body.setRotate(-1);
             })
         );
-        dragAnimation.play();
+        draggingAnimation.setCycleCount(Animation.INDEFINITE);
+        draggingAnimation.play();
     }
     
     /**
-     * 날아가는 애니메이션 설정
+     * 날아가기 애니메이션 설정
      */
     private void setupFlyingAnimation() {
-        stopAllAnimations();
-        
-        // 날아가는 중에는 팔다리가 펼쳐진 상태로 약간씩 움직임
-        Timeline flyAnimation = new Timeline(
+        Timeline flyingAnimation = new Timeline(
             new KeyFrame(Duration.millis(0), e -> {
-                leftArm.setRotate(60);
-                rightArm.setRotate(-60);
-                leftLeg.setRotate(30);
-                rightLeg.setRotate(-30);
+                // 날아가는 동안 팔다리 펼치기
+                leftArm.setRotate(-30);
+                rightArm.setRotate(30);
+                leftLeg.setRotate(-15);
+                rightLeg.setRotate(15);
                 
-                // 머리가 약간 뒤로 젖혀짐
-                head.setRotate(-5);
-                
-                // 놀란 눈 (크게)
-                leftEye.setScaleX(1.6);
-                leftEye.setScaleY(2.0);
-                rightEye.setScaleX(1.6);
-                rightEye.setScaleY(2.0);
+                // 몸체 약간 기울이기 (속도 방향에 따라)
+                double angle = Math.atan2(velocityY, velocityX) * 180 / Math.PI;
+                characterBody.setRotate(angle * 0.3); // 속도 방향의 30%만 기울임
+            }),
+            new KeyFrame(Duration.millis(100), e -> {
+                // 약간의 진동 효과
+                head.setScaleX(1.05);
+                head.setScaleY(0.95);
             }),
             new KeyFrame(Duration.millis(200), e -> {
-                leftArm.setRotate(70);
-                rightArm.setRotate(-70);
-                head.setRotate(5);
-            }),
-            new KeyFrame(Duration.millis(400), e -> {
-                leftArm.setRotate(60);
-                rightArm.setRotate(-60);
-                head.setRotate(-5);
+                head.setScaleX(0.95);
+                head.setScaleY(1.05);
             })
         );
-        flyAnimation.setCycleCount(Animation.INDEFINITE);
-        flyAnimation.play();
+        flyingAnimation.setCycleCount(Animation.INDEFINITE);
+        flyingAnimation.play();
     }
     
     /**
      * 기절 애니메이션 설정
      */
     private void setupStunnedAnimation() {
-        stopAllAnimations();
+        // 먼저 자세 리셋
+        resetCharacterPose();
         
-        // 기절 상태: 별이 도는 효과와 함께 캐릭터가 흔들림
         Timeline stunnedAnimation = new Timeline(
             new KeyFrame(Duration.millis(0), e -> {
-                // 팔다리가 늘어진 상태
-                leftArm.setRotate(15);
-                rightArm.setRotate(-15);
-                leftLeg.setRotate(5);
-                rightLeg.setRotate(-5);
+                // 기절 상태: 눈이 X자 모양
+                leftEye.setScaleX(0.5);
+                leftEye.setScaleY(0.5);
+                rightEye.setScaleX(0.5);
+                rightEye.setScaleY(0.5);
                 
-                // 머리가 약간 기울어짐
-                head.setRotate(10);
-                
-                // 눈이 X자 모양 (어지러운 표정)
-                leftEye.setScaleX(0.6);
-                leftEye.setScaleY(2.3);
-                rightEye.setScaleX(0.6);
-                rightEye.setScaleY(2.3);
+                // 몸이 약간 기울어짐
+                characterBody.setRotate(5);
             }),
-            new KeyFrame(Duration.millis(250), e -> {
-                head.setRotate(-10);
-                characterBody.setRotate(2);
+            new KeyFrame(Duration.millis(200), e -> {
+                characterBody.setRotate(-5);
             }),
-            new KeyFrame(Duration.millis(500), e -> {
-                head.setRotate(10);
-                characterBody.setRotate(-2);
+            new KeyFrame(Duration.millis(400), e -> {
+                characterBody.setRotate(5);
             }),
-            new KeyFrame(Duration.millis(750), e -> {
-                head.setRotate(-5);
+            new KeyFrame(Duration.millis(600), e -> {
                 characterBody.setRotate(0);
-            }),
-            new KeyFrame(Duration.millis(1000), e -> {
-                // 원래 상태로 복귀
-                resetCharacterPose();
+                
+                // 눈 원복
+                leftEye.setScaleX(1.0);
+                leftEye.setScaleY(1.0);
+                rightEye.setScaleX(1.0);
+                rightEye.setScaleY(1.0);
             })
         );
+        stunnedAnimation.setCycleCount(2); // 2번 반복
         stunnedAnimation.play();
     }
     
     /**
-     * 캐릭터 포즈를 원래 상태로 리셋
+     * 캐릭터 자세 리셋
      */
     private void resetCharacterPose() {
+        head.setRotate(0);
+        head.setScaleX(1.0);
+        head.setScaleY(1.0);
+        
+        body.setRotate(0);
+        body.setScaleX(1.0);
+        body.setScaleY(1.0);
+        
         leftArm.setRotate(0);
         rightArm.setRotate(0);
         leftLeg.setRotate(0);
         rightLeg.setRotate(0);
-        head.setRotate(0);
-        head.setScaleX(1.0);
-        head.setScaleY(1.0);
+        
         characterBody.setRotate(0);
         
-        // 눈을 원래 크기로
-        leftEye.setScaleX(1.0);
-        leftEye.setScaleY(1.0);
-        rightEye.setScaleX(1.0);
-        rightEye.setScaleY(1.0);
+        this.setRotate(0);
+        this.setScaleX(1.0);
+        this.setScaleY(1.0);
+        this.setOpacity(1.0);
     }
     
     /**
-     * 모든 애니메이션 중지
+     * 모든 애니메이션 정지
      */
     private void stopAllAnimations() {
-        if (walkAnimation != null) walkAnimation.stop();
         if (idleAnimation != null) idleAnimation.stop();
+        if (walkAnimation != null) walkAnimation.stop();
     }
     
-    /**
-     * 캐릭터 크기 반환
-     */
     public double getCharacterWidth() {
         return CHARACTER_WIDTH;
     }
@@ -904,11 +904,12 @@ public class AdvisorCharacter extends Group {
     }
     
     /**
-     * 캐릭터 정리 (애니메이션 중지)
+     * 리소스 정리
      */
     public void cleanup() {
-        if (idleAnimation != null) idleAnimation.stop();
-        if (walkAnimation != null) walkAnimation.stop();
-        if (physicsAnimation != null) physicsAnimation.stop();
+        stopAllAnimations();
+        if (physicsAnimation != null) {
+            physicsAnimation.stop();
+        }
     }
 } 

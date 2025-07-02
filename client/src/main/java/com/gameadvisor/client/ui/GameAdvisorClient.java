@@ -1,7 +1,7 @@
 package com.gameadvisor.client.ui;
 
 import com.gameadvisor.client.model.Game;
-import com.gameadvisor.client.ui.components.CharacterOverlay;
+import com.gameadvisor.client.ui.components.character.CharacterOverlay;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import javafx.application.Application;
@@ -119,18 +119,18 @@ public class GameAdvisorClient extends Application {
         // 완전히 투명한 오버레이 창 생성
         overlayStage = new Stage();
         
-        // 캐릭터 오버레이를 위한 완전히 투명한 Pane
+        // 캐릭터 오버레이를 위한 투명한 Pane
         Pane overlayPane = new Pane();
-        overlayPane.setPickOnBounds(false); // 마우스 이벤트를 게임으로 통과
+        overlayPane.setPickOnBounds(false); // 빈 영역의 마우스 이벤트를 게임으로 통과
         overlayPane.setStyle("-fx-background-color: transparent;");
         
         // 캐릭터 오버레이 초기화
         characterOverlay = new CharacterOverlay(overlayPane);
 
-        // 완전히 투명한 루트
+        // 투명한 루트
         StackPane root = new StackPane(overlayPane);
         root.setStyle("-fx-background-color: transparent;");
-        root.setPickOnBounds(false); // 마우스 이벤트 통과
+        root.setPickOnBounds(false); // 빈 영역의 마우스 이벤트 통과
 
         // 전체 화면 크기로 Scene 생성
         javafx.geometry.Rectangle2D screenBounds = javafx.stage.Screen.getPrimary().getVisualBounds();

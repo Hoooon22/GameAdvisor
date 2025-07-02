@@ -1,4 +1,4 @@
-package com.gameadvisor.client.ui.components;
+package com.gameadvisor.client.ui.components.character;
 
 import com.gameadvisor.client.model.GameWindowInfo;
 import com.sun.jna.platform.win32.WinDef.RECT;
@@ -25,13 +25,22 @@ public class CharacterOverlay {
     private double characterY = 0;
     private boolean isCharacterActive = false;
     
+    // 캐릭터 던지기 후 착지 위치 기억
+    private boolean hasLandedPosition = false;
+    private double landedX = 0;
+    private double landedY = 0;
+    
     // 자동 활동 타이머
     private Timeline idleActivityTimer;
     private Random random = new Random();
     
     // 물리 효과 완료 후 위치 업데이트 방지용 쿨다운
     private long lastPhysicsCompletedTime = 0;
-    private static final long POSITION_UPDATE_COOLDOWN = 3000; // 3초
+    private static final long POSITION_UPDATE_COOLDOWN = 5000; // 5초로 증가
+    
+    // 활성 Timeline들 (드래그 시 중단하기 위해)
+    private Timeline currentWalkSyncTimer;
+    private Timeline currentBubbleUpdateTimer;
     
     public CharacterOverlay(Pane overlayPane) {
         this.overlayPane = overlayPane;
@@ -46,15 +55,29 @@ public class CharacterOverlay {
         character = new AdvisorCharacter();
         speechBubble = new SpeechBubble();
         
-        // 물리 효과 완료 시 위치 동기화 콜백 설정
+        // 물리 효과 완료 시 착지 위치 기억 콜백 설정
         character.setOnPhysicsCompleted(() -> {
-            syncCharacterPosition();
+            saveLandingPosition();
             lastPhysicsCompletedTime = System.currentTimeMillis(); // 쿨다운 시작
-            System.out.println("[DEBUG] 물리 효과 완료 - 위치 동기화됨, 쿨다운 시작");
+            
+            // 물리 효과 완료 후 말풍선 위치도 업데이트
+            Platform.runLater(() -> {
+                updateSpeechBubblePosition();
+            });
+            
+            System.out.println("[DEBUG] 물리 효과 완료 - 착지 위치 저장됨, 말풍선 위치 업데이트, 쿨다운 시작");
+        });
+        
+        // 드래그 시작 시 활성 Timeline들 중단하도록 콜백 설정
+        character.setOnDragStarted(() -> {
+            stopActiveTimelines();
+            setupSceneDragHandling(); // Scene 레벨 드래그 핸들링 설정
+            System.out.println("[DEBUG] 드래그 시작 - 모든 Timeline 중단, Scene 레벨 드래그 활성화");
         });
         
         // 캐릭터가 마우스 이벤트를 받을 수 있도록 설정
         character.setMouseTransparent(false);
+        character.setPickOnBounds(true); // 캐릭터 영역 내 모든 마우스 이벤트 캐치
         speechBubble.setMouseTransparent(true); // 말풍선은 클릭 불가
         
         // 오버레이에 추가
@@ -74,6 +97,7 @@ public class CharacterOverlay {
         
         if (!isCharacterActive) {
             isCharacterActive = true;
+            hasLandedPosition = false; // 처음 활성화 시에는 착지 위치 없음
             positionCharacterAtGameBottom(gameInfo);
             character.setVisible(true);
             
@@ -113,9 +137,28 @@ public class CharacterOverlay {
      */
     public void deactivateCharacter() {
         isCharacterActive = false;
+        hasLandedPosition = false; // 비활성화 시 착지 위치 초기화
         character.setVisible(false);
         speechBubble.hideImmediately();
         stopIdleActivity();
+    }
+    
+    /**
+     * 착지 위치 저장 (드래그 중에는 저장하지 않음)
+     */
+    private void saveLandingPosition() {
+        // 드래그 중이면 위치 저장 하지 않음
+        if (character.isBeingDragged()) {
+            System.out.println("[DEBUG] 드래그 중 - 착지 위치 저장 건너뜀");
+            return;
+        }
+        
+        landedX = character.getLayoutX();
+        landedY = character.getLayoutY();
+        hasLandedPosition = true;
+        characterX = landedX; // 추적 변수도 업데이트
+        characterY = landedY;
+        System.out.println("[DEBUG] 착지 위치 저장: (" + (int)landedX + ", " + (int)landedY + ")");
     }
     
     /**
@@ -132,15 +175,36 @@ public class CharacterOverlay {
             return;
         }
         
-        // 물리 효과 완료 후 쿨다운 중인지 확인
+        // 착지 위치가 있고 물리 효과 완료 후 쿨다운 중인지 확인
         long currentTime = System.currentTimeMillis();
         boolean inCooldown = (currentTime - lastPhysicsCompletedTime) < POSITION_UPDATE_COOLDOWN;
         
-        if (inCooldown) {
-            System.out.println("[DEBUG] 물리 효과 쿨다운 중 - 위치 재설정 방지");
+        if (hasLandedPosition && inCooldown) {
+            System.out.println("[DEBUG] 착지 위치가 있고 쿨다운 중 - 착지 위치 유지");
             // 경계만 업데이트
             RECT rect = gameInfo.getRect();
             character.setBounds(rect.left, rect.top, rect.right, rect.bottom);
+            
+            // 착지 위치가 새로운 게임 창 경계 내에 있는지 확인하고 조정
+            if (landedX < rect.left) {
+                landedX = rect.left + 10;
+            } else if (landedX + character.getCharacterWidth() > rect.right) {
+                landedX = rect.right - character.getCharacterWidth() - 10;
+            }
+            
+            if (landedY < rect.top) {
+                landedY = rect.top + 10;
+            } else if (landedY + character.getCharacterHeight() > rect.bottom) {
+                landedY = rect.bottom - character.getCharacterHeight() - 5;
+            }
+            
+            // 조정된 착지 위치로 캐릭터 이동
+            Platform.runLater(() -> {
+                character.setLayoutX(landedX);
+                character.setLayoutY(landedY);
+                updateSpeechBubblePosition();
+            });
+            
             return;
         }
         
@@ -152,15 +216,38 @@ public class CharacterOverlay {
         double gameWidth = rect.right - rect.left;
         double gameHeight = rect.bottom - rect.top;
         
-        // 캐릭터를 게임 창 하단 중앙에 배치
-        characterX = gameLeft + (gameWidth / 2) - (character.getCharacterWidth() / 2);
-        characterY = rect.bottom - character.getCharacterHeight() - 5; // 게임 창 바닥에서 5px 위
-        
-        // 캐릭터가 게임 창 범위 내에 있는지 확인
-        if (characterX < gameLeft) {
-            characterX = gameLeft + 10; // 왼쪽 여백
-        } else if (characterX + character.getCharacterWidth() > rect.right) {
-            characterX = rect.right - character.getCharacterWidth() - 10; // 오른쪽 여백
+        // 착지 위치가 있으면 그 위치를 우선 사용 (게임 창 변경 시)
+        if (hasLandedPosition && !inCooldown) {
+            characterX = landedX;
+            characterY = landedY;
+            
+            // 게임 창 경계 내에 있는지 확인하고 조정
+            if (characterX < gameLeft) {
+                characterX = gameLeft + 10;
+            } else if (characterX + character.getCharacterWidth() > rect.right) {
+                characterX = rect.right - character.getCharacterWidth() - 10;
+            }
+            
+            if (characterY < gameTop) {
+                characterY = gameTop + 10;
+            } else if (characterY + character.getCharacterHeight() > rect.bottom) {
+                characterY = rect.bottom - character.getCharacterHeight() - 5;
+            }
+            
+            System.out.println("[DEBUG] 저장된 착지 위치 사용: (" + (int)characterX + ", " + (int)characterY + ")");
+        } else {
+            // 착지 위치가 없으면 게임 창 하단 중앙에 배치
+            characterX = gameLeft + (gameWidth / 2) - (character.getCharacterWidth() / 2);
+            characterY = rect.bottom - character.getCharacterHeight() - 5; // 게임 창 바닥에서 5px 위
+            
+            // 캐릭터가 게임 창 범위 내에 있는지 확인
+            if (characterX < gameLeft) {
+                characterX = gameLeft + 10; // 왼쪽 여백
+            } else if (characterX + character.getCharacterWidth() > rect.right) {
+                characterX = rect.right - character.getCharacterWidth() - 10; // 오른쪽 여백
+            }
+            
+            System.out.println("[DEBUG] 기본 위치 사용 (하단 중앙): (" + (int)characterX + ", " + (int)characterY + ")");
         }
         
         Platform.runLater(() -> {
@@ -185,25 +272,61 @@ public class CharacterOverlay {
      * 캐릭터 위치 업데이트 (게임 창 크기 변경 시)
      */
     private void updateCharacterPosition(GameWindowInfo gameInfo) {
-        // 물리 효과 완료 후 쿨다운 중인지 확인
+        // 드래그 중이면 아무 것도 하지 않음 (경계 업데이트도 하지 않음)
+        if (character.isBeingDragged()) {
+            System.out.println("[DEBUG] 드래그 중 - 모든 위치 업데이트 건너뜀");
+            return;
+        }
+        
+        // 착지 위치가 있고 물리 효과 완료 후 쿨다운 중인지 확인
         long currentTime = System.currentTimeMillis();
         boolean inCooldown = (currentTime - lastPhysicsCompletedTime) < POSITION_UPDATE_COOLDOWN;
         
-        if (inCooldown) {
-            System.out.println("[DEBUG] 물리 효과 쿨다운 중 - 위치 업데이트 건너뜀 (남은 시간: " + 
+        if (hasLandedPosition && inCooldown) {
+            System.out.println("[DEBUG] 착지 위치가 있고 쿨다운 중 - 위치 업데이트 건너뜀 (남은 시간: " + 
                              (POSITION_UPDATE_COOLDOWN - (currentTime - lastPhysicsCompletedTime)) + "ms)");
-            // 경계만 업데이트
+            // 경계만 업데이트하고 착지 위치 유지
             RECT rect = gameInfo.getRect();
             character.setBounds(rect.left, rect.top, rect.right, rect.bottom);
+            
+            // 착지 위치가 새로운 게임 창 경계 내에 맞도록 조정 (드래그 중이 아닐 때만)
+            boolean needsAdjustment = false;
+            if (landedX < rect.left) {
+                landedX = rect.left + 10;
+                needsAdjustment = true;
+            } else if (landedX + character.getCharacterWidth() > rect.right) {
+                landedX = rect.right - character.getCharacterWidth() - 10;
+                needsAdjustment = true;
+            }
+            
+            if (landedY < rect.top) {
+                landedY = rect.top + 10;
+                needsAdjustment = true;
+            } else if (landedY + character.getCharacterHeight() > rect.bottom) {
+                landedY = rect.bottom - character.getCharacterHeight() - 5;
+                needsAdjustment = true;
+            }
+            
+            if (needsAdjustment && !character.isBeingDragged()) {
+                Platform.runLater(() -> {
+                    character.setLayoutX(landedX);
+                    character.setLayoutY(landedY);
+                    updateSpeechBubblePosition();
+                });
+                System.out.println("[DEBUG] 착지 위치 경계 조정: (" + (int)landedX + ", " + (int)landedY + ")");
+            }
+            
             return;
         }
         
         if (isCharacterActive && !character.isInPhysicsMode() && !character.isBeingDragged()) {
             positionCharacterAtGameBottom(gameInfo);
         } else if (isCharacterActive) {
-            // 물리 모드 중이거나 드래그 중일 때는 경계만 업데이트
-            RECT rect = gameInfo.getRect();
-            character.setBounds(rect.left, rect.top, rect.right, rect.bottom);
+            // 물리 모드 중일 때는 경계만 업데이트 (드래그 중이 아닐 때만)
+            if (!character.isBeingDragged()) {
+                RECT rect = gameInfo.getRect();
+                character.setBounds(rect.left, rect.top, rect.right, rect.bottom);
+            }
         }
     }
     
@@ -221,9 +344,15 @@ public class CharacterOverlay {
     }
     
     /**
-     * 캐릭터의 실제 위치로 추적 변수 동기화
+     * 캐릭터의 실제 위치로 추적 변수 동기화 (드래그 중에는 동기화하지 않음)
      */
     public void syncCharacterPosition() {
+        // 드래그 중이면 위치 동기화 하지 않음
+        if (character.isBeingDragged()) {
+            System.out.println("[DEBUG] 드래그 중 - 위치 동기화 건너뜀");
+            return;
+        }
+        
         characterX = character.getLayoutX();
         characterY = character.getLayoutY();
         System.out.println("[DEBUG] 캐릭터 위치 동기화: (" + characterX + ", " + characterY + ")");
@@ -243,14 +372,17 @@ public class CharacterOverlay {
             updateSpeechBubblePosition();
             speechBubble.showMessage(message, bubbleType);
             
-            // 물리 모드 중일 때는 말풍선 위치를 지속적으로 업데이트
-            if (character.isInPhysicsMode()) {
-                Timeline bubbleUpdateTimer = new Timeline(
-                    new KeyFrame(Duration.millis(50), e -> updateSpeechBubblePosition())
-                );
-                bubbleUpdateTimer.setCycleCount(60); // 3초간 업데이트 (50ms × 60)
-                bubbleUpdateTimer.play();
-            }
+            // 말풍선이 표시되는 동안 지속적으로 위치 업데이트 (물리 모드든 아니든)
+            Timeline bubbleUpdateTimer = new Timeline(
+                new KeyFrame(Duration.millis(50), e -> {
+                    if (!character.isBeingDragged()) { // 드래그 중이 아닐 때만 업데이트
+                        updateSpeechBubblePosition();
+                    }
+                })
+            );
+            bubbleUpdateTimer.setCycleCount(100); // 5초간 업데이트 (50ms × 100)
+            bubbleUpdateTimer.play();
+            System.out.println("[DEBUG] 말풍선 위치 업데이트 Timer 시작 (5초간)");
         });
     }
     
@@ -279,18 +411,32 @@ public class CharacterOverlay {
             
             character.walkTo(deltaX, 0);
             
-            // 걷기가 완료된 후 위치 동기화
-            Timeline syncAfterWalk = new Timeline(
-                new KeyFrame(Duration.seconds(2.1), e -> syncCharacterPosition()) // 걷기 완료 후 동기화
+            // 이전 Timeline들 중단
+            stopActiveTimelines();
+            
+            // 걷기가 완료된 후 위치 동기화 및 착지 위치 업데이트
+            currentWalkSyncTimer = new Timeline(
+                new KeyFrame(Duration.seconds(2.1), e -> {
+                    if (!character.isBeingDragged()) { // 드래그 중이 아닐 때만 동기화
+                        syncCharacterPosition(); // 걷기 완료 후 동기화
+                        saveLandingPosition(); // 새로운 위치를 착지 위치로 저장
+                    }
+                    currentWalkSyncTimer = null; // Timer 참조 해제
+                })
             );
-            syncAfterWalk.play();
+            currentWalkSyncTimer.play();
             
             // 걷는 동안 말풍선 위치 지속 업데이트
-            Timeline updateBubblePosition = new Timeline(
-                new KeyFrame(Duration.millis(100), e -> updateSpeechBubblePosition())
+            currentBubbleUpdateTimer = new Timeline(
+                new KeyFrame(Duration.millis(100), e -> {
+                    if (!character.isBeingDragged()) { // 드래그 중이 아닐 때만 업데이트
+                        updateSpeechBubblePosition();
+                    }
+                })
             );
-            updateBubblePosition.setCycleCount(20); // 2초간 업데이트
-            updateBubblePosition.play();
+            currentBubbleUpdateTimer.setCycleCount(20); // 2초간 업데이트
+            currentBubbleUpdateTimer.setOnFinished(e -> currentBubbleUpdateTimer = null); // Timer 참조 해제
+            currentBubbleUpdateTimer.play();
         });
     }
     
@@ -319,6 +465,23 @@ public class CharacterOverlay {
     private void stopIdleActivity() {
         if (idleActivityTimer != null) {
             idleActivityTimer.stop();
+        }
+    }
+    
+    /**
+     * 활성 Timeline들 중단 (드래그 시작 시 호출)
+     */
+    private void stopActiveTimelines() {
+        if (currentWalkSyncTimer != null) {
+            currentWalkSyncTimer.stop();
+            currentWalkSyncTimer = null;
+            System.out.println("[DEBUG] 걷기 동기화 Timer 중단");
+        }
+        
+        if (currentBubbleUpdateTimer != null) {
+            currentBubbleUpdateTimer.stop();
+            currentBubbleUpdateTimer = null;
+            System.out.println("[DEBUG] 말풍선 업데이트 Timer 중단");
         }
     }
     
@@ -402,6 +565,8 @@ public class CharacterOverlay {
      */
     public void cleanup() {
         stopIdleActivity();
+        stopActiveTimelines(); // 활성 Timeline들 정리
+        
         if (character != null) {
             character.cleanup();
         }
@@ -415,5 +580,44 @@ public class CharacterOverlay {
      */
     public boolean isCharacterActive() {
         return isCharacterActive;
+    }
+    
+    /**
+     * Scene 레벨 드래그 핸들링 설정 (캐릭터가 화면 밖으로 나가도 드래그 지속)
+     */
+    private void setupSceneDragHandling() {
+        if (overlayPane.getScene() != null) {
+            // Scene에 마우스 이벤트 핸들러 추가하여 전역 드래그 처리
+            overlayPane.getScene().setOnMouseDragged(e -> {
+                if (character.isBeingDragged()) {
+                    // 캐릭터가 드래그 중일 때만 Scene 레벨에서 처리
+                    e.consume();
+                    System.out.println("[DEBUG] Scene 레벨 드래그 처리 중");
+                }
+            });
+            
+            overlayPane.getScene().setOnMouseReleased(e -> {
+                if (character.isBeingDragged()) {
+                    // 캐릭터가 드래그 중일 때만 Scene 레벨에서 처리
+                    e.consume();
+                    System.out.println("[DEBUG] Scene 레벨 마우스 릴리즈 처리");
+                    // Scene 레벨 핸들러 제거
+                    removeSceneDragHandling();
+                }
+            });
+            
+            System.out.println("[DEBUG] Scene 레벨 드래그 핸들러 설정 완료");
+        }
+    }
+    
+    /**
+     * Scene 레벨 드래그 핸들링 제거
+     */
+    private void removeSceneDragHandling() {
+        if (overlayPane.getScene() != null) {
+            overlayPane.getScene().setOnMouseDragged(null);
+            overlayPane.getScene().setOnMouseReleased(null);
+            System.out.println("[DEBUG] Scene 레벨 드래그 핸들러 제거 완료");
+        }
     }
 } 

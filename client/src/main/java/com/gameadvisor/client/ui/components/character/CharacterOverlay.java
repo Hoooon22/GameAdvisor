@@ -106,13 +106,13 @@ public class CharacterOverlay {
     }
     
     /**
-     * 화면 분석 버튼 생성 및 설정
+     * 공략 버튼 생성 및 설정
      */
     private void createScreenAnalysisButton() {
-        screenAnalysisButton = new Button("🔍");
+        screenAnalysisButton = new Button("📋");
         screenAnalysisButton.setPrefSize(30, 30);
         screenAnalysisButton.setStyle(
-            "-fx-background-color: #4CAF50; " +
+            "-fx-background-color: #FF9800; " +
             "-fx-text-fill: white; " +
             "-fx-font-size: 14px; " +
             "-fx-background-radius: 15; " +
@@ -123,7 +123,7 @@ public class CharacterOverlay {
         // 버튼 호버 효과
         screenAnalysisButton.setOnMouseEntered(e -> {
             screenAnalysisButton.setStyle(
-                "-fx-background-color: #45a049; " +
+                "-fx-background-color: #e68900; " +
                 "-fx-text-fill: white; " +
                 "-fx-font-size: 14px; " +
                 "-fx-background-radius: 15; " +
@@ -134,7 +134,7 @@ public class CharacterOverlay {
         
         screenAnalysisButton.setOnMouseExited(e -> {
             screenAnalysisButton.setStyle(
-                "-fx-background-color: #4CAF50; " +
+                "-fx-background-color: #FF9800; " +
                 "-fx-text-fill: white; " +
                 "-fx-font-size: 14px; " +
                 "-fx-background-radius: 15; " +
@@ -151,7 +151,7 @@ public class CharacterOverlay {
     }
     
     /**
-     * 화면 분석 수행
+     * 공략 분석 수행
      */
     private void performScreenAnalysis() {
         if (currentGameInfo == null) {
@@ -160,11 +160,11 @@ public class CharacterOverlay {
         }
         
         // 로딩 메시지 표시
-        makeCharacterSpeak("화면을 분석하고 있습니다...", SpeechBubble.BubbleType.THINKING);
+        makeCharacterSpeak("현재 상황을 분석하고 최적의 전략을 찾고 있습니다...", SpeechBubble.BubbleType.THINKING);
         character.setState(AdvisorCharacter.AnimationState.THINKING);
         
-        // 백그라운드에서 화면 분석 수행
-        Task<ScreenAnalysisResponse> analysisTask = new Task<ScreenAnalysisResponse>() {
+        // 백그라운드에서 공략 분석 수행
+        Task<ScreenAnalysisResponse> strategyTask = new Task<ScreenAnalysisResponse>() {
             @Override
             protected ScreenAnalysisResponse call() throws Exception {
                 // 게임 창 영역 캡쳐
@@ -178,11 +178,21 @@ public class CharacterOverlay {
                 
                 String capturedImage = ScreenCaptureUtil.captureGameWindow(captureRect);
                 
-                // 분석 요청 생성
+                // 공략 중심 분석 요청 생성
+                String strategyPrompt = String.format(
+                    "%s 게임의 현재 화면을 보고 다음 내용으로 상세한 공략 가이드를 제공해줘:\n\n" +
+                    "1. 현재 상황 분석 (우선순위, 위험요소, 기회)\n" +
+                    "2. 다음에 해야 할 구체적인 행동 (단계별 가이드)\n" +
+                    "3. 전략적 팁과 주의사항\n" +
+                    "4. 효율적인 리소스 관리 방법\n\n" +
+                    "친근하고 이해하기 쉬운 한국어로 답변해주고, 이모지를 사용해서 재미있게 설명해줘!",
+                    currentGameInfo.getGameName()
+                );
+                
                 ScreenAnalysisRequest request = new ScreenAnalysisRequest(
                     capturedImage,
                     currentGameInfo.getGameName(),
-                    "현재 게임 화면 상황 분석"
+                    strategyPrompt
                 );
                 
                 // API 호출
@@ -190,31 +200,31 @@ public class CharacterOverlay {
             }
         };
         
-        analysisTask.setOnSucceeded(e -> {
-            ScreenAnalysisResponse response = analysisTask.getValue();
+        strategyTask.setOnSucceeded(e -> {
+            ScreenAnalysisResponse response = strategyTask.getValue();
             Platform.runLater(() -> {
                 if (response.isSuccess()) {
                     character.setState(AdvisorCharacter.AnimationState.TALKING);
-                    makeCharacterSpeak(response.getAnalysis(), SpeechBubble.BubbleType.NORMAL);
+                    makeCharacterSpeak(response.getAnalysis(), SpeechBubble.BubbleType.ADVICE);
                 } else {
                     character.setState(AdvisorCharacter.AnimationState.IDLE);
-                    makeCharacterSpeak("분석에 실패했습니다: " + response.getErrorMessage(), SpeechBubble.BubbleType.WARNING);
+                    makeCharacterSpeak("공략 분석에 실패했습니다: " + response.getErrorMessage(), SpeechBubble.BubbleType.WARNING);
                 }
             });
         });
         
-        analysisTask.setOnFailed(e -> {
+        strategyTask.setOnFailed(e -> {
             Platform.runLater(() -> {
                 character.setState(AdvisorCharacter.AnimationState.IDLE);
-                makeCharacterSpeak("화면 분석 중 오류가 발생했습니다.", SpeechBubble.BubbleType.WARNING);
-                System.err.println("화면 분석 실패: " + analysisTask.getException().getMessage());
+                makeCharacterSpeak("공략 분석 중 오류가 발생했습니다.", SpeechBubble.BubbleType.WARNING);
+                System.err.println("공략 분석 실패: " + strategyTask.getException().getMessage());
             });
         });
         
         // 백그라운드 스레드에서 실행
-        Thread analysisThread = new Thread(analysisTask);
-        analysisThread.setDaemon(true);
-        analysisThread.start();
+        Thread strategyThread = new Thread(strategyTask);
+        strategyThread.setDaemon(true);
+        strategyThread.start();
     }
     
     /**
@@ -234,6 +244,8 @@ public class CharacterOverlay {
             screenAnalysisButton.setLayoutY(buttonY);
         }
     }
+    
+
     
     /**
      * 게임 감지 시 캐릭터 활성화

@@ -63,13 +63,22 @@ public class SpeechBubble extends Group {
         textArea = new TextArea();
         textArea.setWrapText(true);
         textArea.setEditable(false); // 읽기 전용
-        textArea.setFocusTraversable(false); // 포커스 받지 않음 (스크롤은 여전히 가능)
+        textArea.setFocusTraversable(true); // 포커스 받아서 스크롤 가능하도록 변경
         textArea.setPrefRowCount(3); // 기본 3줄
         
-        // 마우스 스크롤 이벤트 처리 (포커스 없이도 스크롤 가능하도록)
+        // 마우스 투명도 해제하여 이벤트 수신 가능하도록
+        textArea.setMouseTransparent(false);
+        
+        // 마우스 스크롤 이벤트 처리 개선
         textArea.setOnScroll(scrollEvent -> {
-            // 스크롤 이벤트를 TextArea가 직접 처리하도록 허용
-            scrollEvent.consume();
+            System.out.println("[DEBUG] 텍스트 영역 스크롤 이벤트 발생: " + scrollEvent.getDeltaY());
+            // 스크롤 이벤트는 consume하지 않고 자연스럽게 처리되도록 함
+        });
+        
+        // 마우스 클릭 시 포커스 받도록 설정
+        textArea.setOnMouseClicked(mouseEvent -> {
+            textArea.requestFocus();
+            System.out.println("[DEBUG] 텍스트 영역 클릭됨 - 포커스 요청");
         });
         
         // 패딩 설정 (버튼과 겹치지 않도록)
@@ -139,6 +148,7 @@ public class SpeechBubble extends Group {
         
         // 호버 효과
         closeButton.setOnMouseEntered(e -> {
+            System.out.println("[DEBUG] X 버튼 호버 진입");
             closeButton.setStyle(
                 "-fx-background-color: rgba(255,30,30,0.9); " +
                 "-fx-text-fill: white; " +
@@ -203,6 +213,7 @@ public class SpeechBubble extends Group {
         
         // 최소화 버튼 호버 효과
         minimizeButton.setOnMouseEntered(e -> {
+            System.out.println("[DEBUG] 최소화 버튼 호버 진입");
             minimizeButton.setStyle(
                 "-fx-background-color: rgba(70,170,70,0.9); " +
                 "-fx-text-fill: white; " +
@@ -412,6 +423,9 @@ public class SpeechBubble extends Group {
         minimizeButton.setVisible(true);
         
         System.out.println("[DEBUG] 말풍선 표시됨 - 타입: " + type + ", 메시지: " + message.substring(0, Math.min(50, message.length())) + "...");
+        
+        // 말풍선을 최상위로 가져오기
+        this.toFront();
         
         // 페이드 인 애니메이션 (투명도를 낮춰서 배경이 잘 보이도록)
         this.setVisible(true);

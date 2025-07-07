@@ -100,7 +100,7 @@ public class CharacterOverlay {
         // 캐릭터가 마우스 이벤트를 받을 수 있도록 설정
         character.setMouseTransparent(false);
         character.setPickOnBounds(true); // 캐릭터 영역 내 모든 마우스 이벤트 캐치
-        speechBubble.setMouseTransparent(true); // 말풍선은 클릭 불가
+        speechBubble.setMouseTransparent(false); // 말풍선도 클릭 가능하도록 변경
         
         // 화면 분석 버튼 생성
         createScreenAnalysisButton();
@@ -591,6 +591,9 @@ public class CharacterOverlay {
             }
             updateSpeechBubblePosition();
             speechBubble.showMessage(message, bubbleType);
+            
+            // 말풍선을 최상위로 가져오기
+            speechBubble.toFront();
             
             // STRATEGY 타입이 아닌 경우만 자동 종료 타이머 설정
             if (bubbleType != SpeechBubble.BubbleType.STRATEGY) {

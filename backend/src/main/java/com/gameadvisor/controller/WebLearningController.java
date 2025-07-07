@@ -3,10 +3,12 @@ package com.gameadvisor.controller;
 import com.gameadvisor.service.vector.WebDataCollectionService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -354,6 +356,70 @@ public class WebLearningController {
             response.put("base_url", baseUrl);
             
             return ResponseEntity.status(500).body(response);
+        }
+    }
+    
+    /**
+     * 고품질 전략 가이드에서 직접 자료를 수집합니다.
+     */
+    @PostMapping("/collect-strategy-guides")
+    public ResponseEntity<Map<String, Object>> collectStrategyGuides() {
+        log.info("고품질 전략 가이드 수집 API 호출");
+        
+        Map<String, Object> response = new HashMap<>();
+        
+        try {
+                         // 실제 전략 가이드 URL들 (나무위키 하위 링크들 포함)
+             List<String> strategyUrls = Arrays.asList(
+                 // 메인 전략 페이지
+                 "https://namu.wiki/w/블룬스 TD 6/전략",
+                 "https://namu.wiki/w/블룬스 TD 6/영웅",
+                 "https://namu.wiki/w/블룬스 TD 6/타워",
+                 
+                 // 타워 카테고리별 전략 - 나무위키 하위 링크들
+                 "https://namu.wiki/w/블룬스 TD 6/타워/1차 공격",
+                 "https://namu.wiki/w/블룬스 TD 6/타워/군사",
+                 "https://namu.wiki/w/블룬스 TD 6/타워/마법",
+                 "https://namu.wiki/w/블룬스 TD 6/타워/지원",
+                 "https://namu.wiki/w/블룬스 TD 6/파라곤",
+                 
+                 // 풍선 및 라운드 전략
+                 "https://namu.wiki/w/블룬스 TD 6/풍선",
+                 "https://namu.wiki/w/블룬스 TD 6/라운드",
+                 "https://namu.wiki/w/블룬스 TD 6/보스",
+                 "https://namu.wiki/w/블룬스 TD 6/황금 풍선",
+                 
+                 // 트랙별 전략
+                 "https://namu.wiki/w/블룬스 TD 6/맵/초보",
+                 "https://namu.wiki/w/블룬스 TD 6/맵/중급",
+                 "https://namu.wiki/w/블룬스 TD 6/맵/고급",
+                 "https://namu.wiki/w/블룬스 TD 6/맵/전문",
+                 "https://namu.wiki/w/블룬스 TD 6/맵/기타",
+                 
+                 // 게임 플레이 전략
+                 "https://namu.wiki/w/블룬스 TD 6/게임 모드",
+                 "https://namu.wiki/w/블룬스 TD 6/원숭이 지식",
+                 "https://namu.wiki/w/블룬스 TD 6/퀘스트",
+                 
+                 // 수집 요소
+                 "https://namu.wiki/w/블룬스 TD 6/트로피 상점",
+                 "https://namu.wiki/w/블룬스 TD 6/업적"
+             );
+            
+            webDataCollectionService.collectFromMultipleUrls(strategyUrls, "strategy_guide");
+            
+            response.put("success", true);
+            response.put("message", "고품질 전략 가이드 수집이 시작되었습니다");
+            response.put("collectedUrls", strategyUrls.size());
+            response.put("urls", strategyUrls);
+            
+            return ResponseEntity.ok(response);
+            
+        } catch (Exception e) {
+            log.error("전략 가이드 수집 실패: {}", e.getMessage(), e);
+            response.put("success", false);
+            response.put("message", "전략 가이드 수집에 실패했습니다: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
     }
     

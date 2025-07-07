@@ -42,6 +42,7 @@ function Show-Help {
     Write-Host "  -Mode url          : Collect from specific URL (-Url, -Category optional)" -ForegroundColor White
     Write-Host "  -Mode urls         : Collect from multiple URLs (-Urls, -Category optional)" -ForegroundColor White
     Write-Host "  -Mode deep         : Site depth crawling (collect sub URLs automatically)" -ForegroundColor White
+    Write-Host "  -Mode strategy-guides : Collect all BTD6 strategy guides from Namu Wiki" -ForegroundColor White
     Write-Host "  -Mode status       : Check web learning service status" -ForegroundColor White
     Write-Host "  -Mode help         : Show this help" -ForegroundColor White
     Write-Host ""
@@ -51,6 +52,7 @@ function Show-Help {
     Write-Host "  .\start-web-learning.ps1 -Mode keyword -Keyword 'MOAB'" -ForegroundColor White
     Write-Host "  .\start-web-learning.ps1 -Mode url -Url 'https://bloons.fandom.com/wiki/Strategies' -Category 'BTD Strategy'" -ForegroundColor White
     Write-Host "  .\start-web-learning.ps1 -Mode deep -Url 'https://bloons.fandom.com' -Category 'BTD Wiki' -MaxDepth 3 -MaxPages 20" -ForegroundColor White
+    Write-Host "  .\start-web-learning.ps1 -Mode strategy-guides" -ForegroundColor White
     Write-Host "  .\start-web-learning.ps1 -Mode status" -ForegroundColor White
     Write-Host ""
     Write-Host "Deep crawling options (for deep mode):" -ForegroundColor $InfoColor
@@ -363,6 +365,56 @@ function Start-DeepCollection {
     }
 }
 
+# Collect BTD6 strategy guides from Namu Wiki
+function Start-StrategyGuidesCollection {
+    Write-Host "Starting to collect BTD6 strategy guides from Namu Wiki..." -ForegroundColor $InfoColor
+    
+    # Define all strategy guide URLs from WebDataCollectionService.java
+    $StrategyGuideUrls = @(
+        "https://namu.wiki/w/%EB%B8%94%EB%A3%AC%EC%8A%A4%20TD%206/%EC%A0%84%EB%9E%B5",
+        "https://namu.wiki/w/%EB%B8%94%EB%A3%AC%EC%8A%A4%20TD%206/%EC%98%81%EC%9B%85",
+        "https://namu.wiki/w/%EB%B8%94%EB%A3%AC%EC%8A%A4%20TD%206/%ED%83%80%EC%9B%8C",
+        "https://namu.wiki/w/%EB%B8%94%EB%A3%AC%EC%8A%A4%20TD%206/%ED%83%80%EC%9B%8C/1%EC%B0%A8%20%EA%B3%B5%EA%B2%A9",
+        "https://namu.wiki/w/%EB%B8%94%EB%A3%AC%EC%8A%A4%20TD%206/%ED%83%80%EC%9B%8C/%EA%B5%B0%EC%82%AC",
+        "https://namu.wiki/w/%EB%B8%94%EB%A3%AC%EC%8A%A4%20TD%206/%ED%83%80%EC%9B%8C/%EB%A7%88%EB%B2%95",
+        "https://namu.wiki/w/%EB%B8%94%EB%A3%AC%EC%8A%A4%20TD%206/%ED%83%80%EC%9B%8C/%EC%A7%80%EC%9B%90",
+        "https://namu.wiki/w/%EB%B8%94%EB%A3%AC%EC%8A%A4%20TD%206/%ED%8C%8C%EB%9D%BC%EA%B3%A4",
+        "https://namu.wiki/w/%EB%B8%94%EB%A3%AC%EC%8A%A4%20TD%206/%ED%92%8D%EC%84%A0",
+        "https://namu.wiki/w/%EB%B8%94%EB%A3%AC%EC%8A%A4%20TD%206/%EB%9D%BC%EC%9A%B4%EB%93%9C",
+        "https://namu.wiki/w/%EB%B8%94%EB%A3%AC%EC%8A%A4%20TD%206/%EB%B3%B4%EC%8A%A4",
+        "https://namu.wiki/w/%EB%B8%94%EB%A3%AC%EC%8A%A4%20TD%206/%ED%99%A9%EA%B8%88%20%ED%92%8D%EC%84%A0",
+        "https://namu.wiki/w/%EB%B8%94%EB%A3%AC%EC%8A%A4%20TD%206/%EB%A7%B5/%EC%B4%88%EB%B3%B4",
+        "https://namu.wiki/w/%EB%B8%94%EB%A3%AC%EC%8A%A4%20TD%206/%EB%A7%B5/%EC%A4%91%EA%B8%89",
+        "https://namu.wiki/w/%EB%B8%94%EB%A3%AC%EC%8A%A4%20TD%206/%EB%A7%B5/%EA%B3%A0%EA%B8%89",
+        "https://namu.wiki/w/%EB%B8%94%EB%A3%AC%EC%8A%A4%20TD%206/%EB%A7%B5/%EC%A0%84%EB%AC%B8",
+        "https://namu.wiki/w/%EB%B8%94%EB%A3%AC%EC%8A%A4%20TD%206/%EB%A7%B5/%EA%B8%B0%ED%83%80",
+        "https://namu.wiki/w/%EB%B8%94%EB%A3%AC%EC%8A%A4%20TD%206/%EA%B2%8C%EC%9E%84%20%EB%AA%A8%EB%93%9C",
+        "https://namu.wiki/w/%EB%B8%94%EB%A3%AC%EC%8A%A4%20TD%206/%EC%9B%90%EC%88%AD%EC%9D%B4%20%EC%A7%80%EC%8B%9D",
+        "https://namu.wiki/w/%EB%B8%94%EB%A3%AC%EC%8A%A4%20TD%206/%ED%80%98%EC%8A%A4%ED%8A%B8",
+        "https://namu.wiki/w/%EB%B8%94%EB%A3%AC%EC%8A%A4%20TD%206/%ED%8A%B8%EB%A1%9C%ED%94%BC%20%EC%83%81%EC%A0%90",
+        "https://namu.wiki/w/%EB%B8%94%EB%A3%AC%EC%8A%A4%20TD%206/%EC%97%85%EC%A0%81"
+    )
+    
+    $Category = "BTD6 NamuWiki Strategy Guide"
+    
+    Write-Host "Category: $Category" -ForegroundColor $InfoColor
+    Write-Host "Total URLs: $($StrategyGuideUrls.Count)" -ForegroundColor $InfoColor
+    Write-Host ""
+    Write-Host "URL list to collect:" -ForegroundColor $InfoColor
+    for ($i = 0; $i -lt $StrategyGuideUrls.Count; $i++) {
+        Write-Host "  $($i+1). $($StrategyGuideUrls[$i])" -ForegroundColor White
+    }
+    Write-Host ""
+    
+    try {
+        # Use the existing urls collection function
+        Start-UrlsCollection -Urls $StrategyGuideUrls -Category $Category
+    }
+    catch {
+        Write-Host "Failed to collect strategy guides: $($_.Exception.Message)" -ForegroundColor $ErrorColor
+    }
+}
+
 # Check service status
 function Show-ServiceStatus {
     Write-Host "Checking web learning service status..." -ForegroundColor $InfoColor
@@ -427,6 +479,9 @@ switch ($Mode.ToLower()) {
     }
     "deep" {
         Start-DeepCollection -BaseUrl $Url -Category $Category -MaxDepth $MaxDepth -MaxPages $MaxPages
+    }
+    "strategy-guides" {
+        Start-StrategyGuidesCollection
     }
     default {
         Write-Host "Error: Unknown mode: $Mode" -ForegroundColor $ErrorColor

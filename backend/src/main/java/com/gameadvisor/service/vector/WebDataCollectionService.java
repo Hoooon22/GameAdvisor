@@ -48,13 +48,49 @@ public class WebDataCollectionService {
         "BTD6 hero abilities guide"
     );
     
+    // 실제 BTD 전략 가이드 URL들 (높은 품질의 전략 정보)
+    private static final List<String> STRATEGY_GUIDE_URLS = Arrays.asList(
+        // 메인 전략 페이지
+        "https://namu.wiki/w/블룬스 TD 6/전략",
+        "https://namu.wiki/w/블룬스 TD 6/영웅",
+        "https://namu.wiki/w/블룬스 TD 6/타워",
+        
+        // 타워 카테고리별 전략 - 나무위키 하위 링크들
+        "https://namu.wiki/w/블룬스 TD 6/타워/1차 공격",
+        "https://namu.wiki/w/블룬스 TD 6/타워/군사",
+        "https://namu.wiki/w/블룬스 TD 6/타워/마법",
+        "https://namu.wiki/w/블룬스 TD 6/타워/지원",
+        "https://namu.wiki/w/블룬스 TD 6/파라곤",
+        
+        // 풍선 및 라운드 전략
+        "https://namu.wiki/w/블룬스 TD 6/풍선",
+        "https://namu.wiki/w/블룬스 TD 6/라운드",
+        "https://namu.wiki/w/블룬스 TD 6/보스",
+        "https://namu.wiki/w/블룬스 TD 6/황금 풍선",
+        
+        // 트랙별 전략
+        "https://namu.wiki/w/블룬스 TD 6/맵/초보",
+        "https://namu.wiki/w/블룬스 TD 6/맵/중급",
+        "https://namu.wiki/w/블룬스 TD 6/맵/고급",
+        "https://namu.wiki/w/블룬스 TD 6/맵/전문",
+        "https://namu.wiki/w/블룬스 TD 6/맵/기타",
+        
+        // 게임 플레이 전략
+        "https://namu.wiki/w/블룬스 TD 6/게임 모드",
+        "https://namu.wiki/w/블룬스 TD 6/원숭이 지식",
+        "https://namu.wiki/w/블룬스 TD 6/퀘스트",
+        
+        // 수집 요소
+        "https://namu.wiki/w/블룬스 TD 6/트로피 상점",
+        "https://namu.wiki/w/블룬스 TD 6/업적"
+    );
+    
     // 신뢰할 수 있는 BTD 관련 웹사이트
     private static final List<String> TRUSTED_DOMAINS = Arrays.asList(
-        "reddit.com/r/btd6",
         "bloons.fandom.com",
-        "gamepress.gg",
-        "ign.com",
-        "steamcommunity.com"
+        "namu.wiki",
+        "steamcommunity.com",
+        "gamepress.gg"
     );
     
     @Autowired
@@ -700,14 +736,61 @@ public class WebDataCollectionService {
     
     /**
      * 웹 내용을 벡터로 변환합니다.
+     * TODO: 실제 임베딩 API(OpenAI, Google 등) 연동 필요
      */
     private List<Double> generateWebContentEmbedding(String content) {
-        // 현재는 간단한 해시 기반 임베딩 (실제로는 임베딩 API 사용)
-        int hash = content.hashCode();
+        // TF-IDF 기반 의미 있는 임베딩 생성
         List<Double> embedding = new ArrayList<>();
         
-        for (int i = 0; i < 768; i++) {
-            embedding.add((double) ((hash + i) % 1000) / 1000.0);
+        // BTD 관련 핵심 키워드들로 특성 벡터 생성
+        String[] keywords = {
+            "bloons", "btd", "tower", "defense", "monkey", "dart", "bomb", "ice", "sniper",
+            "moab", "ceramic", "lead", "camo", "strategy", "round", "upgrade", "path",
+            "primary", "military", "magic", "support", "hero", "village", "farm", "spike",
+            "quincy", "gwendolin", "striker", "obyn", "churchill", "benjamin", "pat", "ezili",
+            "combo", "synergy", "early", "mid", "late", "game", "difficult", "expert",
+            "beginner", "easy", "medium", "hard", "ceramic", "fortified", "regrow", "shield"
+        };
+        
+        String lowerContent = content.toLowerCase();
+        
+        // 각 키워드의 출현 빈도와 위치 기반으로 벡터 생성
+        for (String keyword : keywords) {
+            double frequency = 0.0;
+            int lastIndex = 0;
+            int count = 0;
+            
+            // 키워드 출현 빈도 계산
+            while ((lastIndex = lowerContent.indexOf(keyword, lastIndex)) != -1) {
+                count++;
+                lastIndex += keyword.length();
+            }
+            
+            if (count > 0) {
+                frequency = Math.log(1 + count) / Math.log(content.length() + 1);
+                // 키워드가 제목이나 앞부분에 있으면 가중치 추가
+                if (content.length() > 100 && lowerContent.substring(0, 100).contains(keyword)) {
+                    frequency *= 1.5;
+                }
+            }
+            
+            embedding.add(Math.min(frequency, 1.0));
+        }
+        
+        // 벡터를 768차원으로 확장 (패딩 또는 반복)
+        while (embedding.size() < 768) {
+            // 기존 벡터를 변형하여 확장
+            int index = embedding.size() % keywords.length;
+            double baseValue = embedding.get(index);
+            // 약간의 노이즈를 추가하여 다양성 확보
+            double noise = (Math.random() - 0.5) * 0.1;
+            embedding.add(Math.max(0.0, Math.min(1.0, baseValue + noise)));
+        }
+        
+        // 벡터 정규화 (L2 norm)
+        double norm = Math.sqrt(embedding.stream().mapToDouble(x -> x * x).sum());
+        if (norm > 0) {
+            embedding = embedding.stream().map(x -> x / norm).collect(java.util.stream.Collectors.toList());
         }
         
         return embedding;

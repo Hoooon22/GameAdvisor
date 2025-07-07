@@ -434,8 +434,8 @@ public class SpeechBubble extends Group {
         fadeIn.setToValue(0.85); // 투명도 개선
         fadeIn.play();
         
-        // 공략 조언이 아닌 경우만 자동으로 숨기기
-        if (type != BubbleType.STRATEGY) {
+        // AI 관련 메시지(THINKING, STRATEGY, WARNING)가 아닌 경우만 자동으로 숨기기
+        if (type != BubbleType.STRATEGY && type != BubbleType.THINKING && type != BubbleType.WARNING) {
             // 텍스트 길이에 따른 표시 시간 계산
             double displayDuration = calculateDisplayDuration(message);
             Timeline autoHide = new Timeline(

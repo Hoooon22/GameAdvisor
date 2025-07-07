@@ -287,6 +287,9 @@ public class CharacterOverlay {
                     character.setState(AdvisorCharacter.AnimationState.IDLE);
                     makeCharacterSpeak("❌ 공략 분석에 실패했습니다:\n" + response.getErrorMessage(), SpeechBubble.BubbleType.WARNING);
                 }
+                
+                // 분석 완료 후 일반적인 메시지 예약
+                scheduleWelcomeBackMessage();
             });
         });
         
@@ -301,6 +304,9 @@ public class CharacterOverlay {
                 String errorMessage = exception != null ? exception.getMessage() : "알 수 없는 오류";
                 makeCharacterSpeak("❌ 공략 분석 중 오류가 발생했습니다:\n" + errorMessage, SpeechBubble.BubbleType.WARNING);
                 System.err.println("공략 분석 실패: " + errorMessage);
+                
+                // 분석 실패 후에도 일반적인 메시지 예약
+                scheduleWelcomeBackMessage();
             });
         });
         
@@ -362,8 +368,6 @@ public class CharacterOverlay {
             }
         }
     }
-    
-
     
     /**
      * 게임 감지 시 캐릭터 활성화
@@ -872,8 +876,8 @@ public class CharacterOverlay {
     private void checkForAvoidanceMovement() {
         if (!isCharacterActive) return;
         
-        // 캐릭터가 물리 효과 중이거나 드래그 중이거나 말풍선이 표시 중이면 자동 활동하지 않음
-        if (character.isInPhysicsMode() || character.isBeingDragged() || isSpeechBubbleActive) {
+        // 캐릭터가 물리 효과 중이거나 드래그 중이거나 말풍선이 표시 중이거나 AI 분석 중이면 자동 활동하지 않음
+        if (character.isInPhysicsMode() || character.isBeingDragged() || isSpeechBubbleActive || isAnalyzing) {
             return;
         }
         
@@ -891,6 +895,11 @@ public class CharacterOverlay {
      * 간단한 활동 수행 (클릭 회피가 아닌 경우)
      */
     private void performSimpleActivity() {
+        // AI 분석 중이면 일반적인 활동 중지
+        if (isAnalyzing) {
+            return;
+        }
+        
         int activity = random.nextInt(3); // 걷기 제외하고 3가지만
         
         switch (activity) {
@@ -901,7 +910,7 @@ public class CharacterOverlay {
                 });
                 break;
             case 1:
-                // 조언 말하기
+                // 조언 말하기 (AI 분석 중이 아닐 때만)
                 String[] tips = {
                     "열심히 플레이하고 계시네요! 👍",
                     "잠깐 휴식을 취하는 것도 좋아요! ☕",
@@ -1126,5 +1135,28 @@ public class CharacterOverlay {
         }
     }
     
-
+    /**
+     * 분석 완료 후 일반적인 메시지 예약
+     */
+    private void scheduleWelcomeBackMessage() {
+        // 5초 후에 일반적인 환영 메시지 표시 (사용자가 AI 결과를 충분히 읽을 시간 제공)
+        Timeline welcomeBackTimer = new Timeline(
+            new KeyFrame(Duration.seconds(5), e -> {
+                if (!isAnalyzing && isCharacterActive && !isSpeechBubbleActive) {
+                    String[] welcomeMessages = {
+                        "게임을 잘 진행하고 있군요! 😊",
+                        "필요할 때 언제든 도움을 요청하세요! 🤝",
+                        "즐거운 플레이 되세요! 🎮",
+                        "화면 분석이 도움이 되었길 바라요! ✨"
+                    };
+                    String message = welcomeMessages[random.nextInt(welcomeMessages.length)];
+                    Platform.runLater(() -> {
+                        character.setState(AdvisorCharacter.AnimationState.TALKING);
+                        makeCharacterSpeak(message, SpeechBubble.BubbleType.NORMAL);
+                    });
+                }
+            })
+        );
+        welcomeBackTimer.play();
+    }
 } 

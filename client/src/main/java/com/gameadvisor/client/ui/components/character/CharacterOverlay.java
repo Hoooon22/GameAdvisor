@@ -190,14 +190,31 @@ public class CharacterOverlay {
         updateScreenAnalysisButtonState();
         
         // 첫 번째 단계 메시지 표시
+        System.out.println("[DEBUG] 화면 분석 시작 - 캡쳐 메시지 표시");
         makeCharacterSpeak("🔍 화면 캡쳐중...", SpeechBubble.BubbleType.THINKING);
         character.setState(AdvisorCharacter.AnimationState.THINKING);
         
+        // 단계별 진행을 위한 Timeline 사용
+        Timeline analysisProgress = new Timeline();
+        
+        // 1단계: 화면 캡쳐
+        KeyFrame captureStep = new KeyFrame(Duration.millis(500), e -> {
+            System.out.println("[DEBUG] 화면 캡쳐 단계 시작");
+            performActualCapture();
+        });
+        
+        analysisProgress.getKeyFrames().add(captureStep);
+        analysisProgress.play();
+    }
+    
+    private void performActualCapture() {
         // 백그라운드에서 공략 분석 수행
         Task<ScreenAnalysisResponse> strategyTask = new Task<ScreenAnalysisResponse>() {
             @Override
             protected ScreenAnalysisResponse call() throws Exception {
                 try {
+                    System.out.println("[DEBUG] 실제 캡쳐 작업 시작");
+                    
                     // 게임 창의 클라이언트 영역만 캡쳐 (타이틀바, 테두리 제외)
                     HWND gameHwnd = currentGameInfo.getHwnd();
                     if (gameHwnd == null) {
@@ -229,14 +246,22 @@ public class CharacterOverlay {
                     
                     // 화면 캡쳐 실행
                     String capturedImage = ScreenCaptureUtil.captureGameWindow(captureRect);
+                    System.out.println("[DEBUG] 화면 캡쳐 완료");
                     
                     // 캡쳐 완료 메시지 표시
                     Platform.runLater(() -> {
+                        System.out.println("[DEBUG] 캡쳐 완료 메시지 표시");
                         makeCharacterSpeak("✅ 화면 캡쳐 완료!\n🤖 AI 분석중...", SpeechBubble.BubbleType.THINKING);
+                        
+                        // AI 분석 단계로 진행하기 위한 Timeline
+                        Timeline aiAnalysisStep = new Timeline(
+                            new KeyFrame(Duration.millis(800), event -> {
+                                System.out.println("[DEBUG] AI 분석 단계 메시지 표시");
+                                makeCharacterSpeak("⚡ 서버와 통신중...\n잠시만 기다려주세요!", SpeechBubble.BubbleType.THINKING);
+                            })
+                        );
+                        aiAnalysisStep.play();
                     });
-                    
-                    // 잠시 대기 (사용자가 메시지를 볼 수 있도록)
-                    Thread.sleep(800);
                     
                     // 공략 중심 분석 요청 생성
                     String strategyPrompt = String.format(
@@ -255,15 +280,17 @@ public class CharacterOverlay {
                         strategyPrompt
                     );
                     
-                    // API 호출 시작 메시지
-                    Platform.runLater(() -> {
-                        makeCharacterSpeak("⚡ 서버와 통신중...\n잠시만 기다려주세요!", SpeechBubble.BubbleType.THINKING);
-                    });
+                    System.out.println("[DEBUG] API 호출 시작");
                     
                     // API 호출
-                    return apiClient.analyzeScreen(request);
+                    ScreenAnalysisResponse response = apiClient.analyzeScreen(request);
+                    System.out.println("[DEBUG] API 호출 완료: " + (response != null ? "성공" : "실패"));
+                    
+                    return response;
                     
                 } catch (Exception e) {
+                    System.err.println("[ERROR] 화면 분석 중 오류 발생: " + e.getMessage());
+                    e.printStackTrace();
                     // 에러 발생 시 즉시 UI 업데이트
                     Platform.runLater(() -> {
                         makeCharacterSpeak("❌ 캡쳐 중 오류가 발생했습니다:\n" + e.getMessage(), SpeechBubble.BubbleType.WARNING);
@@ -274,18 +301,22 @@ public class CharacterOverlay {
         };
         
         strategyTask.setOnSucceeded(e -> {
+            System.out.println("[DEBUG] 분석 작업 성공");
             ScreenAnalysisResponse response = strategyTask.getValue();
             Platform.runLater(() -> {
                 // 분석 완료 - 상태 초기화 및 버튼 활성화
                 isAnalyzing = false;
                 updateScreenAnalysisButtonState();
                 
-                if (response.isSuccess()) {
+                if (response != null && response.isSuccess()) {
+                    System.out.println("[DEBUG] 분석 결과 표시");
                     character.setState(AdvisorCharacter.AnimationState.TALKING);
                     makeCharacterSpeak("🎉 분석 완료!\n\n" + response.getAnalysis(), SpeechBubble.BubbleType.STRATEGY);
                 } else {
+                    System.out.println("[DEBUG] 분석 실패 결과 표시");
                     character.setState(AdvisorCharacter.AnimationState.IDLE);
-                    makeCharacterSpeak("❌ 공략 분석에 실패했습니다:\n" + response.getErrorMessage(), SpeechBubble.BubbleType.WARNING);
+                    String errorMsg = response != null ? response.getErrorMessage() : "응답을 받지 못했습니다";
+                    makeCharacterSpeak("❌ 공략 분석에 실패했습니다:\n" + errorMsg, SpeechBubble.BubbleType.WARNING);
                 }
                 
                 // 분석 완료 후 일반적인 메시지 예약
@@ -294,6 +325,7 @@ public class CharacterOverlay {
         });
         
         strategyTask.setOnFailed(e -> {
+            System.err.println("[ERROR] 분석 작업 실패");
             Platform.runLater(() -> {
                 // 분석 실패 - 상태 초기화 및 버튼 활성화
                 isAnalyzing = false;
@@ -304,6 +336,9 @@ public class CharacterOverlay {
                 String errorMessage = exception != null ? exception.getMessage() : "알 수 없는 오류";
                 makeCharacterSpeak("❌ 공략 분석 중 오류가 발생했습니다:\n" + errorMessage, SpeechBubble.BubbleType.WARNING);
                 System.err.println("공략 분석 실패: " + errorMessage);
+                if (exception != null) {
+                    exception.printStackTrace();
+                }
                 
                 // 분석 실패 후에도 일반적인 메시지 예약
                 scheduleWelcomeBackMessage();

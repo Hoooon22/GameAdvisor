@@ -310,6 +310,7 @@ public class SpeechBubble extends Group {
         });
         
         minimizedBar.setVisible(false); // 기본적으로 숨김
+        minimizedBar.setManaged(false); // 레이아웃에서 완전히 제외
         
         // 말풍선 컨테이너 생성
         bubbleContainer = new StackPane();
@@ -704,30 +705,27 @@ public class SpeechBubble extends Group {
     }
     
     /**
-     * 말풍선을 최소화 (작은 바 형태로)
+     * 말풍선을 최소화 (분석 버튼으로 복원 가능)
      */
     private void minimizeBubble() {
         if (isMinimized) return;
         
-        System.out.println("[DEBUG] 말풍선 최소화 시작");
+        System.out.println("[DEBUG] 말풍선 최소화 시작 - 분석 버튼이 복원 기능으로 변경됨");
         isMinimized = true;
         
         // 전체 말풍선과 꼬리 숨기기
         bubbleContainer.setVisible(false);
         bubbleTail.setVisible(false);
         
-        // 최소화된 바 표시
-        minimizedBar.setVisible(true);
+        // 최소화된 바는 사용하지 않음 (분석 버튼이 대신 기능)
+        // minimizedBar.setVisible(true);  // 제거됨
         
         // 부드러운 전환 효과
         FadeTransition fadeOut = new FadeTransition(Duration.millis(200), bubbleContainer);
         fadeOut.setFromValue(1.0);
         fadeOut.setToValue(0.0);
         fadeOut.setOnFinished(e -> {
-            FadeTransition fadeIn = new FadeTransition(Duration.millis(200), minimizedBar);
-            fadeIn.setFromValue(0.0);
-            fadeIn.setToValue(0.95);
-            fadeIn.play();
+            System.out.println("[DEBUG] 말풍선 최소화 완료 - 이제 분석 버튼을 클릭하여 복원할 수 있습니다");
         });
         fadeOut.play();
         
@@ -740,27 +738,24 @@ public class SpeechBubble extends Group {
     private void restoreBubble() {
         if (!isMinimized) return;
         
-        System.out.println("[DEBUG] 말풍선 복원 시작");
+        System.out.println("[DEBUG] 말풍선 복원 시작 - 분석 버튼에서 호출됨");
         isMinimized = false;
         
-        // 최소화된 바 숨기기
-        minimizedBar.setVisible(false);
+        // 최소화된 바는 이미 숨겨져 있음
+        // minimizedBar.setVisible(false);  // 제거됨
         
         // 전체 말풍선과 꼬리 표시
         bubbleContainer.setVisible(true);
         bubbleTail.setVisible(true);
         
-        // 부드러운 전환 효과
-        FadeTransition fadeOut = new FadeTransition(Duration.millis(200), minimizedBar);
-        fadeOut.setFromValue(0.95);
-        fadeOut.setToValue(0.0);
-        fadeOut.setOnFinished(e -> {
-            FadeTransition fadeIn = new FadeTransition(Duration.millis(200), bubbleContainer);
-            fadeIn.setFromValue(0.0);
-            fadeIn.setToValue(0.95);
-            fadeIn.play();
+        // 부드러운 전환 효과 (직접 페이드 인)
+        FadeTransition fadeIn = new FadeTransition(Duration.millis(200), bubbleContainer);
+        fadeIn.setFromValue(0.0);
+        fadeIn.setToValue(0.95);
+        fadeIn.setOnFinished(e -> {
+            System.out.println("[DEBUG] 말풍선 복원 완료 - 분석 버튼이 원래 기능으로 복원됨");
         });
-        fadeOut.play();
+        fadeIn.play();
         
         System.out.println("[DEBUG] 말풍선 복원 완료");
     }
@@ -770,5 +765,12 @@ public class SpeechBubble extends Group {
      */
     public boolean isMinimized() {
         return isMinimized;
+    }
+    
+    /**
+     * 외부에서 말풍선 복원하기 (분석 버튼용)
+     */
+    public void restoreFromMinimized() {
+        restoreBubble();
     }
 } 

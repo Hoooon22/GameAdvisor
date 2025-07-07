@@ -18,6 +18,7 @@ public class BloonsTDKnowledge extends BaseGameKnowledge {
     private String difficulty;      // "easy", "medium", "hard", "expert"
     private List<String> towerTypes; // ["dart_monkey", "spike_factory", "alchemist"]
     private Double successRate;     // 0.0 ~ 1.0
+    private String sourceUrl;       // 웹에서 수집된 자료의 원본 URL
     
     @Override
     public String getGameName() {
@@ -46,5 +47,6 @@ public class BloonsTDKnowledge extends BaseGameKnowledge {
         public static final String BOSS_BATTLE = "boss_battle";
         public static final String TOWER_COMBO = "tower_combo";
         public static final String ECONOMY_BUILD = "economy_build";
+        public static final String GENERAL_STRATEGY = "general_strategy";
     }
 } 

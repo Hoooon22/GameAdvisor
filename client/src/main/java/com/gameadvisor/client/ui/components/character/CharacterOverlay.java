@@ -137,34 +137,51 @@ public class CharacterOverlay {
         // 버튼 호버 효과 (분석 중이 아닐 때만 적용)
         screenAnalysisButton.setOnMouseEntered(e -> {
             if (!isAnalyzing) {
-                screenAnalysisButton.setStyle(
-                    "-fx-background-color: #e68900; " +
-                    "-fx-text-fill: white; " +
-                    "-fx-font-size: 14px; " +
-                    "-fx-background-radius: 15; " +
-                    "-fx-border-radius: 15; " +
-                    "-fx-cursor: hand; " +
-                    "-fx-opacity: 1.0;"
-                );
+                if (speechBubble != null && speechBubble.isMinimized()) {
+                    // 복원 모드 호버 효과
+                    screenAnalysisButton.setStyle(
+                        "-fx-background-color: #66BB6A; " +
+                        "-fx-text-fill: white; " +
+                        "-fx-font-size: 14px; " +
+                        "-fx-background-radius: 15; " +
+                        "-fx-border-radius: 15; " +
+                        "-fx-cursor: hand; " +
+                        "-fx-opacity: 1.0;"
+                    );
+                } else {
+                    // 일반 분석 모드 호버 효과
+                    screenAnalysisButton.setStyle(
+                        "-fx-background-color: #e68900; " +
+                        "-fx-text-fill: white; " +
+                        "-fx-font-size: 14px; " +
+                        "-fx-background-radius: 15; " +
+                        "-fx-border-radius: 15; " +
+                        "-fx-cursor: hand; " +
+                        "-fx-opacity: 1.0;"
+                    );
+                }
             }
         });
         
         screenAnalysisButton.setOnMouseExited(e -> {
             if (!isAnalyzing) {
-                screenAnalysisButton.setStyle(
-                    "-fx-background-color: #FF9800; " +
-                    "-fx-text-fill: white; " +
-                    "-fx-font-size: 14px; " +
-                    "-fx-background-radius: 15; " +
-                    "-fx-border-radius: 15; " +
-                    "-fx-cursor: hand; " +
-                    "-fx-opacity: 1.0;"
-                );
+                // 호버 해제 시 원래 상태로 복원
+                updateScreenAnalysisButtonState();
             }
         });
         
-        // 버튼 클릭 이벤트
-        screenAnalysisButton.setOnAction(e -> performScreenAnalysis());
+        // 버튼 클릭 이벤트 - 말풍선 상태에 따라 동적으로 기능 변경
+        screenAnalysisButton.setOnAction(e -> {
+            if (speechBubble != null && speechBubble.isMinimized()) {
+                // 말풍선이 최소화된 상태 - 복원 기능
+                System.out.println("[DEBUG] 분석 버튼 클릭 - 말풍선 복원 시작");
+                speechBubble.restoreFromMinimized();
+                updateScreenAnalysisButtonState(); // 버튼 상태 즉시 업데이트
+            } else {
+                // 일반 상태 - 화면 분석 기능
+                performScreenAnalysis();
+            }
+        });
         
         // 버튼을 마우스 투명 해제
         screenAnalysisButton.setMouseTransparent(false);
@@ -370,7 +387,7 @@ public class CharacterOverlay {
     }
     
     /**
-     * 화면 분석 버튼 상태 업데이트 (활성화/비활성화)
+     * 화면 분석 버튼 상태 업데이트 (활성화/비활성화/복원 모드)
      */
     private void updateScreenAnalysisButtonState() {
         if (screenAnalysisButton != null) {
@@ -387,8 +404,21 @@ public class CharacterOverlay {
                     "-fx-cursor: default; " +
                     "-fx-opacity: 0.6;"
                 );
+            } else if (speechBubble != null && speechBubble.isMinimized()) {
+                // 말풍선이 최소화된 상태 - 복원 기능으로 변경
+                screenAnalysisButton.setDisable(false);
+                screenAnalysisButton.setText("📄");
+                screenAnalysisButton.setStyle(
+                    "-fx-background-color: #4CAF50; " +
+                    "-fx-text-fill: white; " +
+                    "-fx-font-size: 14px; " +
+                    "-fx-background-radius: 15; " +
+                    "-fx-border-radius: 15; " +
+                    "-fx-cursor: hand; " +
+                    "-fx-opacity: 1.0;"
+                );
             } else {
-                // 분석 완료 시 - 버튼 활성화 및 원래 스타일 복원
+                // 일반 상태 - 원래 분석 기능
                 screenAnalysisButton.setDisable(false);
                 screenAnalysisButton.setText("📋");
                 screenAnalysisButton.setStyle(
@@ -696,7 +726,10 @@ public class CharacterOverlay {
             character.setState(AdvisorCharacter.AnimationState.IDLE);
         }
         
-        System.out.println("[DEBUG] 말풍선 종료 - 다른 동작들 재개");
+        // 분석 버튼 상태 업데이트 (말풍선 상태 변경 반영)
+        updateScreenAnalysisButtonState();
+        
+        System.out.println("[DEBUG] 말풍선 종료 - 다른 동작들 재개, 분석 버튼 상태 업데이트");
     }
 
     /**
@@ -742,6 +775,9 @@ public class CharacterOverlay {
             
             // 말풍선을 최상위로 가져오기
             speechBubble.toFront();
+            
+            // 분석 버튼 상태 업데이트 (말풍선 표시 반영)
+            updateScreenAnalysisButtonState();
             
             // STRATEGY 타입이 아닌 경우만 자동 종료 타이머 설정
             if (bubbleType != SpeechBubble.BubbleType.STRATEGY) {

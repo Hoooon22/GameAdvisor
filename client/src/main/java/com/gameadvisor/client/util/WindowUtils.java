@@ -5,12 +5,24 @@ import com.sun.jna.Pointer;
 import com.sun.jna.platform.win32.User32;
 import com.sun.jna.platform.win32.WinDef.HWND;
 import com.sun.jna.platform.win32.WinDef.RECT;
+import com.sun.jna.platform.win32.WinDef.POINT;
 import com.sun.jna.platform.win32.WinNT.HANDLE;
 import com.sun.jna.ptr.IntByReference;
 import java.util.ArrayList;
 import java.util.List;
 
 public class WindowUtils {
+    
+    // User32 확장 인터페이스 (누락된 메서드들 추가)
+    public interface ExtendedUser32 extends User32 {
+        ExtendedUser32 INSTANCE = Native.load("user32", ExtendedUser32.class);
+        
+        boolean ClientToScreen(HWND hWnd, POINT lpPoint);
+        boolean IsIconic(HWND hWnd);
+        boolean ShowWindow(HWND hWnd, int nCmdShow);
+        boolean GetClientRect(HWND hWnd, RECT lpRect);
+    }
+    
     public static RECT getWindowRectByProcessName(String processName) {
         List<HWND> hwndList = new ArrayList<>();
         User32.INSTANCE.EnumWindows((hWnd, data) -> {
@@ -86,9 +98,87 @@ public class WindowUtils {
         return gotRect ? rect : null;
     }
 
+    /**
+     * 윈도우의 클라이언트 영역(게임 내용 부분만)을 가져오기
+     * 타이틀바, 테두리 등을 제외한 실제 게임 화면 영역만 반환
+     */
+    public static RECT getClientRectByHwnd(HWND hwnd) {
+        if (hwnd == null) return null;
+        
+        RECT clientRect = new RECT();
+        boolean gotClientRect = ExtendedUser32.INSTANCE.GetClientRect(hwnd, clientRect);
+        if (!gotClientRect) return null;
+        
+        // 클라이언트 좌표를 스크린 좌표로 변환
+        POINT topLeft = new POINT();
+        topLeft.x = 0;
+        topLeft.y = 0;
+        boolean converted = ExtendedUser32.INSTANCE.ClientToScreen(hwnd, topLeft);
+        if (!converted) return null;
+        
+        // 스크린 좌표로 변환된 클라이언트 영역 반환
+        RECT screenClientRect = new RECT();
+        screenClientRect.left = topLeft.x;
+        screenClientRect.top = topLeft.y;
+        screenClientRect.right = topLeft.x + clientRect.right;
+        screenClientRect.bottom = topLeft.y + clientRect.bottom;
+        
+        System.out.println("[DEBUG] Client Rect: " + screenClientRect.left + "," + screenClientRect.top + "," + 
+                          screenClientRect.right + "," + screenClientRect.bottom + 
+                          " (size: " + (screenClientRect.right - screenClientRect.left) + "x" + 
+                          (screenClientRect.bottom - screenClientRect.top) + ")");
+        
+        return screenClientRect;
+    }
+
+    /**
+     * 게임 프로세스의 클라이언트 영역을 캡쳐하기 위한 최적화된 메서드
+     * 1. 게임 윈도우를 최상위로 가져오기
+     * 2. 클라이언트 영역만 반환
+     */
+    public static RECT prepareGameWindowForCapture(HWND hwnd) {
+        if (hwnd == null) return null;
+        
+        // 게임 윈도우를 최상위로 가져오기
+        boolean brought = bringToFront(hwnd);
+        System.out.println("[DEBUG] 게임 윈도우 최상위 가져오기: " + brought);
+        
+        // 잠시 대기 (윈도우가 완전히 전면에 나타날 시간)
+        try {
+            Thread.sleep(100);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        
+        // 클라이언트 영역 반환
+        return getClientRectByHwnd(hwnd);
+    }
+
+    /**
+     * 윈도우가 최소화되어 있는지 확인
+     */
+    public static boolean isMinimized(HWND hwnd) {
+        if (hwnd == null) return true;
+        return ExtendedUser32.INSTANCE.IsIconic(hwnd);
+    }
+
+    /**
+     * 최소화된 윈도우 복원
+     */
+    public static boolean restoreWindow(HWND hwnd) {
+        if (hwnd == null) return false;
+        return ExtendedUser32.INSTANCE.ShowWindow(hwnd, User32.SW_RESTORE);
+    }
+
     // HWND를 화면 맨 앞으로 가져오기
     public static boolean bringToFront(HWND hwnd) {
         if (hwnd == null) return false;
+        
+        // 최소화된 경우 복원
+        if (isMinimized(hwnd)) {
+            restoreWindow(hwnd);
+        }
+        
         return User32.INSTANCE.SetForegroundWindow(hwnd);
     }
 

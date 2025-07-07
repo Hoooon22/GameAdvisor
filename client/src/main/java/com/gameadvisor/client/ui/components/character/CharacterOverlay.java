@@ -15,6 +15,8 @@ import javafx.animation.KeyFrame;
 import javafx.util.Duration;
 import java.awt.Rectangle;
 import java.util.Random;
+import com.gameadvisor.client.util.WindowUtils;
+import com.sun.jna.platform.win32.WinDef.HWND;
 
 /**
  * 캐릭터 오버레이 관리 클래스
@@ -195,13 +197,33 @@ public class CharacterOverlay {
         Task<ScreenAnalysisResponse> strategyTask = new Task<ScreenAnalysisResponse>() {
             @Override
             protected ScreenAnalysisResponse call() throws Exception {
-                // 게임 창 영역 캡쳐
-                RECT gameRect = currentGameInfo.getRect();
+                // 게임 창의 클라이언트 영역만 캡쳐 (타이틀바, 테두리 제외)
+                HWND gameHwnd = currentGameInfo.getHwnd();
+                if (gameHwnd == null) {
+                    throw new Exception("게임 윈도우 핸들을 찾을 수 없습니다.");
+                }
+                
+                // 게임 윈도우를 최상위로 가져오고 클라이언트 영역 준비
+                RECT gameClientRect = WindowUtils.prepareGameWindowForCapture(gameHwnd);
+                if (gameClientRect == null) {
+                    throw new Exception("게임 윈도우 클라이언트 영역을 가져올 수 없습니다.");
+                }
+                
+                // 클라이언트 영역이 유효한 크기인지 확인
+                int width = gameClientRect.right - gameClientRect.left;
+                int height = gameClientRect.bottom - gameClientRect.top;
+                if (width <= 0 || height <= 0) {
+                    throw new Exception("게임 윈도우 크기가 유효하지 않습니다: " + width + "x" + height);
+                }
+                
+                System.out.println("[DEBUG] 게임 클라이언트 영역 캡쳐: " + 
+                    gameClientRect.left + "," + gameClientRect.top + " " + width + "x" + height);
+                
                 Rectangle captureRect = new Rectangle(
-                    gameRect.left, 
-                    gameRect.top, 
-                    gameRect.right - gameRect.left, 
-                    gameRect.bottom - gameRect.top
+                    gameClientRect.left, 
+                    gameClientRect.top, 
+                    width, 
+                    height
                 );
                 
                 String capturedImage = ScreenCaptureUtil.captureGameWindow(captureRect);

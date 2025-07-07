@@ -169,7 +169,7 @@ public class CharacterOverlay {
         }
         
         // 로딩 메시지 표시
-        makeCharacterSpeak("현재 상황을 분석하고 최적의 전략을 찾고 있습니다...", SpeechBubble.BubbleType.THINKING);
+        makeCharacterSpeak("화면 분석중...", SpeechBubble.BubbleType.THINKING);
         character.setState(AdvisorCharacter.AnimationState.THINKING);
         
         // 백그라운드에서 공략 분석 수행

@@ -1,6 +1,9 @@
 package com.gameadvisor.service;
 
 import com.gameadvisor.model.*;
+import com.gameadvisor.model.vector.VectorSearchResult;
+import com.gameadvisor.service.vector.GameVectorServiceFactory;
+import com.gameadvisor.service.vector.GameVectorService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -23,6 +26,7 @@ public class GeminiService {
     private final RestTemplate restTemplate;
     private final WebSearchService webSearchService;
     private final ObjectMapper objectMapper;
+    private final GameVectorServiceFactory vectorServiceFactory;
     
     @Value("${gemini.api.key}")
     private String apiKey;
@@ -34,22 +38,36 @@ public class GeminiService {
     private long timeoutMs;
     
     @Autowired
-    public GeminiService(WebSearchService webSearchService) {
+    public GeminiService(WebSearchService webSearchService, GameVectorServiceFactory vectorServiceFactory) {
         this.restTemplate = new RestTemplate();
         this.webSearchService = webSearchService;
         this.objectMapper = new ObjectMapper();
+        this.vectorServiceFactory = vectorServiceFactory;
     }
     
     public GameAdviceResponse getGameAdvice(GameAdviceRequest request) {
         try {
             log.info("게임 조언 요청: 게임={}, 상황={}", request.getGameName(), request.getCurrentSituation());
             
-            String prompt = buildGameAdvicePrompt(request);
+            // 1단계: 벡터 DB에서 유사한 상황 검색
+            List<VectorSearchResult> vectorResults = searchVectorKnowledge(request);
+            
+            // 2단계: 벡터 검색 결과와 함께 프롬프트 구성
+            String prompt;
+            if (!vectorResults.isEmpty()) {
+                prompt = buildEnhancedGameAdvicePrompt(request, vectorResults);
+                log.info("벡터 DB에서 {} 개의 유사 상황 발견", vectorResults.size());
+            } else {
+                prompt = buildGameAdvicePrompt(request);
+                log.info("벡터 DB에서 유사 상황을 찾지 못함. 기본 프롬프트 사용");
+            }
+            
             GeminiRequest geminiRequest = buildGeminiRequest(prompt);
-            
             GeminiResponse geminiResponse = callGeminiApi(geminiRequest);
-            
             String advice = extractAdviceFromResponse(geminiResponse);
+            
+            // 3단계: 사용된 벡터 지식의 사용량 증가
+            updateVectorKnowledgeUsage(vectorResults);
             
             return GameAdviceResponse.builder()
                     .advice(advice)
@@ -330,6 +348,83 @@ public class GeminiService {
         HttpEntity<GeminiRequest> entity = new HttpEntity<>(request, headers);
         
         return restTemplate.postForObject(url, entity, GeminiResponse.class);
+    }
+    
+    // 벡터 DB 관련 메서드들
+    
+    /**
+     * 벡터 DB에서 유사한 게임 지식 검색
+     */
+    private List<VectorSearchResult> searchVectorKnowledge(GameAdviceRequest request) {
+        try {
+            if (!vectorServiceFactory.isSupported(request.getGameName())) {
+                log.debug("지원하지 않는 게임: {}", request.getGameName());
+                return List.of();
+            }
+            
+            GameVectorService vectorService = vectorServiceFactory.getService(request.getGameName());
+            return vectorService.searchSimilar(request.getCurrentSituation(), 3);
+            
+        } catch (Exception e) {
+            log.warn("벡터 검색 중 오류 발생: {}", e.getMessage());
+            return List.of();
+        }
+    }
+    
+    /**
+     * 벡터 검색 결과를 포함한 개선된 프롬프트 생성
+     */
+    private String buildEnhancedGameAdvicePrompt(GameAdviceRequest request, List<VectorSearchResult> vectorResults) {
+        StringBuilder prompt = new StringBuilder();
+        prompt.append("당신은 게임 전문가이며 친근한 게임 어드바이저입니다.\n\n");
+        
+        prompt.append("게임: ").append(request.getGameName()).append("\n");
+        prompt.append("현재 상황: ").append(request.getCurrentSituation()).append("\n\n");
+        
+        if (request.getPlayerLevel() != null && !request.getPlayerLevel().isEmpty()) {
+            prompt.append("플레이어 레벨: ").append(request.getPlayerLevel()).append("\n");
+        }
+        
+        if (request.getSpecificQuestion() != null && !request.getSpecificQuestion().isEmpty()) {
+            prompt.append("구체적 질문: ").append(request.getSpecificQuestion()).append("\n");
+        }
+        
+        // 벡터 검색 결과 추가
+        prompt.append("\n참고할 만한 검증된 전략들:\n");
+        for (int i = 0; i < vectorResults.size(); i++) {
+            VectorSearchResult result = vectorResults.get(i);
+            prompt.append(String.format("%d. %s\n", i + 1, result.getKnowledge().getTitle()));
+            prompt.append(String.format("   전략: %s\n", result.getKnowledge().getAdvice()));
+            prompt.append(String.format("   유사도: %.2f\n", result.getSimilarity()));
+            if (result.getKnowledge().getSuccessMetric() != null) {
+                prompt.append(String.format("   성공률: %.1f%%\n", result.getKnowledge().getSuccessMetric() * 100));
+            }
+            prompt.append("\n");
+        }
+        
+        prompt.append("위 검증된 전략들을 참고하여 현재 상황에 최적화된 조언을 제공해주세요. ");
+        prompt.append("조언은 구체적이고 실행 가능해야 하며, 초보자도 이해할 수 있도록 친근하게 작성해주세요.");
+        
+        return prompt.toString();
+    }
+    
+    /**
+     * 사용된 벡터 지식의 사용량 업데이트
+     */
+    private void updateVectorKnowledgeUsage(List<VectorSearchResult> vectorResults) {
+        try {
+            for (VectorSearchResult result : vectorResults) {
+                if (result.getSimilarity() >= 0.7) {  // 유사도가 높은 경우만 사용량 증가
+                    String gameName = result.getKnowledge().getGameName();
+                    if (vectorServiceFactory.isSupported(gameName)) {
+                        GameVectorService vectorService = vectorServiceFactory.getService(gameName);
+                        vectorService.incrementUsage(result.getKnowledge().getId());
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("벡터 지식 사용량 업데이트 중 오류 발생: {}", e.getMessage());
+        }
     }
     
     private String extractAdviceFromResponse(GeminiResponse response) {

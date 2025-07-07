@@ -7,6 +7,7 @@ import javafx.geometry.Pos;
 import javafx.scene.Group;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
+import javafx.scene.control.ScrollPane;
 import javafx.scene.effect.DropShadow;
 import javafx.scene.layout.Background;
 import javafx.scene.layout.BackgroundFill;
@@ -33,6 +34,7 @@ public class SpeechBubble extends Group {
     
     private StackPane bubbleContainer;
     private Label textLabel;
+    private ScrollPane scrollPane;
     private Polygon bubbleTail;
     private Button closeButton;
     private Button minimizeButton;
@@ -54,11 +56,52 @@ public class SpeechBubble extends Group {
         // 텍스트 라벨 생성
         textLabel = new Label();
         textLabel.setWrapText(true);
-        textLabel.setMaxWidth(280); // 더 넓게 설정하여 긴 텍스트 수용
-        textLabel.setMaxHeight(200); // 최대 높이 제한으로 너무 길어지는 것 방지
+        textLabel.setMaxWidth(420); // 더 넓게 설정하여 긴 텍스트 수용
         textLabel.setPadding(new Insets(12, 40, 12, 15)); // 오른쪽 패딩을 늘려 X 버튼 공간 확보
-        textLabel.setAlignment(Pos.CENTER);
+        textLabel.setAlignment(Pos.TOP_LEFT); // 텍스트를 왼쪽 정렬하고 위쪽부터 시작
         textLabel.setStyle("-fx-font-family: 'Malgun Gothic'; -fx-font-size: 13px; -fx-text-fill: white; -fx-font-weight: bold; -fx-effect: dropshadow(gaussian, black, 2, 0.8, 1, 1);");
+        
+        // ScrollPane으로 텍스트 라벨 감싸기
+        scrollPane = new ScrollPane(textLabel);
+        scrollPane.setFitToWidth(true);
+        scrollPane.setMaxWidth(460); // 스크롤바 공간 고려하여 조금 더 넓게
+        scrollPane.setMaxHeight(320); // 최대 높이를 더 크게 설정
+        scrollPane.setPrefHeight(320);
+        scrollPane.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER); // 가로 스크롤바 숨김
+        scrollPane.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED); // 세로 스크롤바 필요시만 표시
+        
+        // ScrollPane 스타일 설정 (투명 배경, 스크롤바 스타일링)
+        scrollPane.setStyle(
+            "-fx-background: transparent; " +
+            "-fx-background-color: transparent; " +
+            "-fx-border-width: 0; " +
+            "-fx-focus-color: transparent; " +
+            "-fx-faint-focus-color: transparent; " +
+            "-fx-padding: 5px;" +
+            
+            // 스크롤바 스타일 직접 설정
+            ".scroll-bar:vertical { " +
+            "    -fx-background-color: rgba(255,255,255,0.2); " +
+            "    -fx-background-radius: 8px; " +
+            "    -fx-border-radius: 8px; " +
+            "    -fx-pref-width: 12px; " +
+            "    -fx-opacity: 0.8; " +
+            "} " +
+            ".scroll-bar:vertical .thumb { " +
+            "    -fx-background-color: rgba(255,255,255,0.6); " +
+            "    -fx-background-radius: 6px; " +
+            "    -fx-border-radius: 6px; " +
+            "} " +
+            ".scroll-bar:vertical .track { " +
+            "    -fx-background-color: rgba(0,0,0,0.2); " +
+            "    -fx-background-radius: 8px; " +
+            "    -fx-border-radius: 8px; " +
+            "} " +
+            ".scroll-bar:vertical .increment-button, .scroll-bar:vertical .decrement-button { " +
+            "    -fx-opacity: 0; " +
+            "    -fx-pref-height: 0; " +
+            "}"
+        );
         
         // X 버튼 생성 (공략 조언용)
         closeButton = new Button("✕");
@@ -257,9 +300,11 @@ public class SpeechBubble extends Group {
         
         // 말풍선 컨테이너 생성
         bubbleContainer = new StackPane();
-        bubbleContainer.getChildren().addAll(textLabel, closeButton, minimizeButton);
-        bubbleContainer.setMaxWidth(320); // 긴 텍스트를 위해 더 넓게
-        bubbleContainer.setMaxHeight(220); // 최대 높이 제한
+        bubbleContainer.getChildren().addAll(scrollPane, closeButton, minimizeButton);
+        bubbleContainer.setMaxWidth(500); // ScrollPane에 맞게 더 넓게 설정
+        bubbleContainer.setMaxHeight(360); // ScrollPane에 맞게 더 높게 설정
+        bubbleContainer.setPrefWidth(500);
+        bubbleContainer.setPrefHeight(360);
         
         // X 버튼과 최소화 버튼을 오른쪽 위에 위치시키기
         StackPane.setAlignment(closeButton, Pos.TOP_RIGHT);

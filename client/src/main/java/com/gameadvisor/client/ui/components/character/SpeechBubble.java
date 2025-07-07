@@ -7,7 +7,7 @@ import javafx.geometry.Pos;
 import javafx.scene.Group;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
-import javafx.scene.control.ScrollPane;
+import javafx.scene.control.TextArea;
 import javafx.scene.effect.DropShadow;
 import javafx.scene.layout.Background;
 import javafx.scene.layout.BackgroundFill;
@@ -33,8 +33,7 @@ public class SpeechBubble extends Group {
     }
     
     private StackPane bubbleContainer;
-    private Label textLabel;
-    private ScrollPane scrollPane;
+    private TextArea textArea;
     private Polygon bubbleTail;
     private Button closeButton;
     private Button minimizeButton;
@@ -45,6 +44,13 @@ public class SpeechBubble extends Group {
     private boolean isMinimized = false;
     private String currentMessage = "";
     
+    // 말풍선 크기 설정
+    private static final int MIN_WIDTH = 200;
+    private static final int MAX_WIDTH = 450;
+    private static final int MIN_HEIGHT = 80;
+    private static final int MAX_HEIGHT = 300;
+    private static final int CHARS_PER_LINE = 35;
+    
     public SpeechBubble() {
         initializeBubble();
     }
@@ -53,196 +59,192 @@ public class SpeechBubble extends Group {
      * 말풍선 초기화
      */
     private void initializeBubble() {
-        // 텍스트 라벨 생성
-        textLabel = new Label();
-        textLabel.setWrapText(true);
-        textLabel.setMaxWidth(420); // 더 넓게 설정하여 긴 텍스트 수용
-        textLabel.setPadding(new Insets(12, 40, 12, 15)); // 오른쪽 패딩을 늘려 X 버튼 공간 확보
-        textLabel.setAlignment(Pos.TOP_LEFT); // 텍스트를 왼쪽 정렬하고 위쪽부터 시작
-        textLabel.setStyle("-fx-font-family: 'Malgun Gothic'; -fx-font-size: 13px; -fx-text-fill: white; -fx-font-weight: bold; -fx-effect: dropshadow(gaussian, black, 2, 0.8, 1, 1);");
+        // 텍스트 영역 생성 (스크롤 가능)
+        textArea = new TextArea();
+        textArea.setWrapText(true);
+        textArea.setEditable(false); // 읽기 전용
+        textArea.setFocusTraversable(false); // 포커스 받지 않음 (스크롤은 여전히 가능)
+        textArea.setPrefRowCount(3); // 기본 3줄
         
-        // ScrollPane으로 텍스트 라벨 감싸기
-        scrollPane = new ScrollPane(textLabel);
-        scrollPane.setFitToWidth(true);
-        scrollPane.setMaxWidth(460); // 스크롤바 공간 고려하여 조금 더 넓게
-        scrollPane.setMaxHeight(320); // 최대 높이를 더 크게 설정
-        scrollPane.setPrefHeight(320);
-        scrollPane.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER); // 가로 스크롤바 숨김
-        scrollPane.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED); // 세로 스크롤바 필요시만 표시
+        // 마우스 스크롤 이벤트 처리 (포커스 없이도 스크롤 가능하도록)
+        textArea.setOnScroll(scrollEvent -> {
+            // 스크롤 이벤트를 TextArea가 직접 처리하도록 허용
+            scrollEvent.consume();
+        });
         
-        // ScrollPane 스타일 설정 (투명 배경, 스크롤바 스타일링)
-        scrollPane.setStyle(
-            "-fx-background: transparent; " +
+        // 패딩 설정 (버튼과 겹치지 않도록)
+        StackPane.setMargin(textArea, new Insets(5, 60, 5, 10)); // 위, 오른쪽(버튼 공간), 아래, 왼쪽
+        textArea.setStyle(
+            "-fx-font-family: 'Malgun Gothic'; " +
+            "-fx-font-size: 13px; " +
+            "-fx-text-fill: white; " +
+            "-fx-font-weight: bold; " +
+            "-fx-control-inner-background: transparent; " +
             "-fx-background-color: transparent; " +
             "-fx-border-width: 0; " +
             "-fx-focus-color: transparent; " +
             "-fx-faint-focus-color: transparent; " +
-            "-fx-padding: 5px;" +
+            "-fx-highlight-fill: rgba(255,255,255,0.2); " +
+            "-fx-highlight-text-fill: white; " +
+            "-fx-text-box-border: transparent; " +
+            "-fx-effect: dropshadow(gaussian, black, 2, 0.8, 1, 1); " +
             
-            // 스크롤바 스타일 직접 설정
+            // 스크롤바 스타일링 - 개선된 버전
             ".scroll-bar:vertical { " +
-            "    -fx-background-color: rgba(255,255,255,0.2); " +
-            "    -fx-background-radius: 8px; " +
-            "    -fx-border-radius: 8px; " +
-            "    -fx-pref-width: 12px; " +
+            "    -fx-background-color: rgba(255,255,255,0.3); " +
+            "    -fx-background-radius: 6px; " +
+            "    -fx-pref-width: 10px; " +
             "    -fx-opacity: 0.8; " +
             "} " +
             ".scroll-bar:vertical .thumb { " +
-            "    -fx-background-color: rgba(255,255,255,0.6); " +
-            "    -fx-background-radius: 6px; " +
-            "    -fx-border-radius: 6px; " +
+            "    -fx-background-color: rgba(255,255,255,0.8); " +
+            "    -fx-background-radius: 5px; " +
+            "    -fx-min-height: 20px; " +
             "} " +
             ".scroll-bar:vertical .track { " +
             "    -fx-background-color: rgba(0,0,0,0.2); " +
-            "    -fx-background-radius: 8px; " +
-            "    -fx-border-radius: 8px; " +
+            "    -fx-background-radius: 6px; " +
             "} " +
             ".scroll-bar:vertical .increment-button, .scroll-bar:vertical .decrement-button { " +
             "    -fx-opacity: 0; " +
             "    -fx-pref-height: 0; " +
+            "} " +
+            // 스크롤 호버 효과
+            ".scroll-bar:vertical:hover { " +
+            "    -fx-opacity: 1.0; " +
+            "} " +
+            ".scroll-bar:vertical .thumb:hover { " +
+            "    -fx-background-color: rgba(255,255,255,1.0); " +
             "}"
         );
         
-        // X 버튼 생성 (공략 조언용)
+        // X 버튼 생성 (모든 말풍선에 표시)
         closeButton = new Button("✕");
-        closeButton.setPrefSize(28, 28); // 크기를 더 크게
-        closeButton.setMinSize(28, 28);
-        closeButton.setMaxSize(28, 28);
+        closeButton.setPrefSize(24, 24);
+        closeButton.setMinSize(24, 24);
+        closeButton.setMaxSize(24, 24);
         closeButton.setStyle(
-            "-fx-background-color: rgba(220,20,20,0.9); " + // 빨간색 배경으로 눈에 띄게
+            "-fx-background-color: rgba(220,20,20,0.8); " +
             "-fx-text-fill: white; " +
-            "-fx-font-size: 14px; " +
+            "-fx-font-size: 12px; " +
             "-fx-font-weight: bold; " +
-            "-fx-background-radius: 14; " +
-            "-fx-border-radius: 14; " +
-            "-fx-border-color: rgba(180,0,0,0.8); " +
-            "-fx-border-width: 2px; " +
+            "-fx-background-radius: 12; " +
+            "-fx-border-radius: 12; " +
+            "-fx-border-color: rgba(180,0,0,0.6); " +
+            "-fx-border-width: 1px; " +
             "-fx-cursor: hand; " +
             "-fx-padding: 0; " +
-            "-fx-effect: dropshadow(gaussian, black, 3, 0.8, 1, 1);" // 그림자 효과 추가
+            "-fx-effect: dropshadow(gaussian, black, 2, 0.6, 1, 1);"
         );
         
-        // 호버 효과 추가
+        // 호버 효과
         closeButton.setOnMouseEntered(e -> {
             closeButton.setStyle(
-                "-fx-background-color: rgba(255,30,30,1.0); " +
+                "-fx-background-color: rgba(255,30,30,0.9); " +
                 "-fx-text-fill: white; " +
-                "-fx-font-size: 14px; " +
+                "-fx-font-size: 12px; " +
                 "-fx-font-weight: bold; " +
-                "-fx-background-radius: 14; " +
-                "-fx-border-radius: 14; " +
-                "-fx-border-color: rgba(200,0,0,1.0); " +
-                "-fx-border-width: 2px; " +
+                "-fx-background-radius: 12; " +
+                "-fx-border-radius: 12; " +
+                "-fx-border-color: rgba(200,0,0,0.8); " +
+                "-fx-border-width: 1px; " +
                 "-fx-cursor: hand; " +
                 "-fx-padding: 0; " +
-                "-fx-effect: dropshadow(gaussian, black, 5, 1.0, 2, 2);"
+                "-fx-effect: dropshadow(gaussian, black, 3, 0.8, 1, 1);"
             );
         });
         
         closeButton.setOnMouseExited(e -> {
             closeButton.setStyle(
-                "-fx-background-color: rgba(220,20,20,0.9); " +
+                "-fx-background-color: rgba(220,20,20,0.8); " +
                 "-fx-text-fill: white; " +
-                "-fx-font-size: 14px; " +
+                "-fx-font-size: 12px; " +
                 "-fx-font-weight: bold; " +
-                "-fx-background-radius: 14; " +
-                "-fx-border-radius: 14; " +
-                "-fx-border-color: rgba(180,0,0,0.8); " +
-                "-fx-border-width: 2px; " +
+                "-fx-background-radius: 12; " +
+                "-fx-border-radius: 12; " +
+                "-fx-border-color: rgba(180,0,0,0.6); " +
+                "-fx-border-width: 1px; " +
                 "-fx-cursor: hand; " +
                 "-fx-padding: 0; " +
-                "-fx-effect: dropshadow(gaussian, black, 3, 0.8, 1, 1);"
+                "-fx-effect: dropshadow(gaussian, black, 2, 0.6, 1, 1);"
             );
         });
+        
         closeButton.setOnAction(e -> {
             System.out.println("[DEBUG] X 버튼 클릭됨 - 말풍선 닫기 시작");
+            e.consume(); // 이벤트 전파 차단
             hide();
             if (onCloseCallback != null) {
                 System.out.println("[DEBUG] 콜백 함수 실행");
                 onCloseCallback.run();
-            } else {
-                System.out.println("[DEBUG] 콜백 함수가 설정되지 않음");
             }
         });
+        // 모든 말풍선에 닫기 버튼을 항상 표시
+        closeButton.setVisible(true);
         
-        // 마우스 클릭 이벤트도 추가 (더 확실한 처리를 위해)
-        closeButton.setOnMouseClicked(e -> {
-            System.out.println("[DEBUG] X 버튼 마우스 클릭 감지");
-            e.consume(); // 이벤트 소비하여 다른 핸들러로 전파 방지
-            hide();
-            if (onCloseCallback != null) {
-                onCloseCallback.run();
-            }
-        });
-        closeButton.setVisible(false); // 기본적으로 숨김
-        
-        // 최소화 버튼 생성 (공략 조언용)
+        // 최소화 버튼 생성 (모든 말풍선에 표시)
         minimizeButton = new Button("−");
-        minimizeButton.setPrefSize(28, 28);
-        minimizeButton.setMinSize(28, 28);
-        minimizeButton.setMaxSize(28, 28);
+        minimizeButton.setPrefSize(24, 24);
+        minimizeButton.setMinSize(24, 24);
+        minimizeButton.setMaxSize(24, 24);
         minimizeButton.setStyle(
-            "-fx-background-color: rgba(50,150,50,0.9); " + // 초록색 배경
+            "-fx-background-color: rgba(50,150,50,0.8); " +
             "-fx-text-fill: white; " +
-            "-fx-font-size: 16px; " +
+            "-fx-font-size: 14px; " +
             "-fx-font-weight: bold; " +
-            "-fx-background-radius: 14; " +
-            "-fx-border-radius: 14; " +
-            "-fx-border-color: rgba(30,120,30,0.8); " +
-            "-fx-border-width: 2px; " +
+            "-fx-background-radius: 12; " +
+            "-fx-border-radius: 12; " +
+            "-fx-border-color: rgba(30,120,30,0.6); " +
+            "-fx-border-width: 1px; " +
             "-fx-cursor: hand; " +
             "-fx-padding: 0; " +
-            "-fx-effect: dropshadow(gaussian, black, 3, 0.8, 1, 1);"
+            "-fx-effect: dropshadow(gaussian, black, 2, 0.6, 1, 1);"
         );
         
         // 최소화 버튼 호버 효과
         minimizeButton.setOnMouseEntered(e -> {
             minimizeButton.setStyle(
-                "-fx-background-color: rgba(70,170,70,1.0); " +
+                "-fx-background-color: rgba(70,170,70,0.9); " +
                 "-fx-text-fill: white; " +
-                "-fx-font-size: 16px; " +
+                "-fx-font-size: 14px; " +
                 "-fx-font-weight: bold; " +
-                "-fx-background-radius: 14; " +
-                "-fx-border-radius: 14; " +
-                "-fx-border-color: rgba(50,140,50,1.0); " +
-                "-fx-border-width: 2px; " +
-                "-fx-cursor: hand; " +
-                "-fx-padding: 0; " +
-                "-fx-effect: dropshadow(gaussian, black, 5, 1.0, 2, 2);"
-            );
-        });
-        
-        minimizeButton.setOnMouseExited(e -> {
-            minimizeButton.setStyle(
-                "-fx-background-color: rgba(50,150,50,0.9); " +
-                "-fx-text-fill: white; " +
-                "-fx-font-size: 16px; " +
-                "-fx-font-weight: bold; " +
-                "-fx-background-radius: 14; " +
-                "-fx-border-radius: 14; " +
-                "-fx-border-color: rgba(30,120,30,0.8); " +
-                "-fx-border-width: 2px; " +
+                "-fx-background-radius: 12; " +
+                "-fx-border-radius: 12; " +
+                "-fx-border-color: rgba(50,140,50,0.8); " +
+                "-fx-border-width: 1px; " +
                 "-fx-cursor: hand; " +
                 "-fx-padding: 0; " +
                 "-fx-effect: dropshadow(gaussian, black, 3, 0.8, 1, 1);"
             );
         });
         
-        minimizeButton.setOnAction(e -> {
-            System.out.println("[DEBUG] 최소화 버튼 클릭됨");
-            minimizeBubble();
+        minimizeButton.setOnMouseExited(e -> {
+            minimizeButton.setStyle(
+                "-fx-background-color: rgba(50,150,50,0.8); " +
+                "-fx-text-fill: white; " +
+                "-fx-font-size: 14px; " +
+                "-fx-font-weight: bold; " +
+                "-fx-background-radius: 12; " +
+                "-fx-border-radius: 12; " +
+                "-fx-border-color: rgba(30,120,30,0.6); " +
+                "-fx-border-width: 1px; " +
+                "-fx-cursor: hand; " +
+                "-fx-padding: 0; " +
+                "-fx-effect: dropshadow(gaussian, black, 2, 0.6, 1, 1);"
+            );
         });
         
-        minimizeButton.setOnMouseClicked(e -> {
-            System.out.println("[DEBUG] 최소화 버튼 마우스 클릭 감지");
-            e.consume();
+        minimizeButton.setOnAction(e -> {
+            System.out.println("[DEBUG] 최소화 버튼 클릭됨");
+            e.consume(); // 이벤트 전파 차단
             minimizeBubble();
         });
-        minimizeButton.setVisible(false); // 기본적으로 숨김
+        // 모든 말풍선에 최소화 버튼을 항상 표시
+        minimizeButton.setVisible(true);
         
         // 최소화된 바 생성 (윈도우 작업표시줄처럼)
         minimizedBar = new StackPane();
-        Label minimizedLabel = new Label("📋 공략 조언");
+        Label minimizedLabel = new Label("📋 조언");
         minimizedLabel.setStyle(
             "-fx-font-family: 'Malgun Gothic'; " +
             "-fx-font-size: 12px; " +
@@ -300,18 +302,14 @@ public class SpeechBubble extends Group {
         
         // 말풍선 컨테이너 생성
         bubbleContainer = new StackPane();
-        bubbleContainer.getChildren().addAll(scrollPane, closeButton, minimizeButton);
-        bubbleContainer.setMaxWidth(500); // ScrollPane에 맞게 더 넓게 설정
-        bubbleContainer.setMaxHeight(360); // ScrollPane에 맞게 더 높게 설정
-        bubbleContainer.setPrefWidth(500);
-        bubbleContainer.setPrefHeight(360);
+        bubbleContainer.getChildren().addAll(textArea, closeButton, minimizeButton);
         
         // X 버튼과 최소화 버튼을 오른쪽 위에 위치시키기
         StackPane.setAlignment(closeButton, Pos.TOP_RIGHT);
-        StackPane.setMargin(closeButton, new Insets(3, 3, 0, 0));
+        StackPane.setMargin(closeButton, new Insets(5, 5, 0, 0));
         
         StackPane.setAlignment(minimizeButton, Pos.TOP_RIGHT);
-        StackPane.setMargin(minimizeButton, new Insets(3, 35, 0, 0)); // X 버튼 왼쪽에 배치
+        StackPane.setMargin(minimizeButton, new Insets(5, 32, 0, 0)); // X 버튼 왼쪽에 배치
         
         // 더 강한 그림자 효과 추가
         DropShadow dropShadow = new DropShadow();
@@ -345,12 +343,56 @@ public class SpeechBubble extends Group {
     }
     
     /**
-     * 말풍선 표시
+     * 텍스트 길이에 따른 말풍선 크기 계산
+     */
+    private void calculateBubbleSize(String message) {
+        int textLength = message.length();
+        int estimatedLines = Math.max(1, (textLength / CHARS_PER_LINE) + 1);
+        
+        // 너비 계산 (텍스트 길이에 따라 조정)
+        int width = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, textLength * 8 + 50));
+        
+        // 높이 계산 (줄 수에 따라 조정)
+        int height = Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, estimatedLines * 25 + 40));
+        
+        // TextArea 크기 설정
+        textArea.setPrefWidth(width - 20); // 패딩 고려
+        textArea.setPrefHeight(height - 20);
+        textArea.setMaxWidth(width - 20);
+        textArea.setMaxHeight(height - 20);
+        
+        // 컨테이너 크기 설정
+        bubbleContainer.setPrefWidth(width);
+        bubbleContainer.setPrefHeight(height);
+        bubbleContainer.setMaxWidth(width);
+        bubbleContainer.setMaxHeight(height);
+        
+        System.out.println(String.format("[DEBUG] 말풍선 크기 조정: 텍스트 길이=%d, 예상 줄 수=%d, 크기=%dx%d", 
+            textLength, estimatedLines, width, height));
+    }
+
+    /**
+     * 말풍선 표시 - 중요한 말풍선 보호 기능 추가
      */
     public void showMessage(String message, BubbleType type) {
+        // 현재 STRATEGY 타입이 표시 중이고 새 메시지가 STRATEGY가 아닌 경우 무시
+        if (isShowing() && currentType == BubbleType.STRATEGY && type != BubbleType.STRATEGY) {
+            System.out.println("[DEBUG] 공략 조언이 표시 중이므로 새로운 일반 메시지 무시: " + message);
+            return;
+        }
+        
+        // 현재 말풍선이 최소화 상태이고 새 메시지가 STRATEGY가 아닌 경우 무시
+        if (isMinimized && type != BubbleType.STRATEGY) {
+            System.out.println("[DEBUG] 말풍선이 최소화 상태이므로 새로운 일반 메시지 무시: " + message);
+            return;
+        }
+        
         currentType = type;
         currentMessage = message;
-        textLabel.setText(message);
+        textArea.setText(message);
+        
+        // 텍스트 길이에 따른 크기 조정
+        calculateBubbleSize(message);
         
         // 최소화 상태 초기화
         isMinimized = false;
@@ -365,15 +407,17 @@ public class SpeechBubble extends Group {
         bubbleTail.setLayoutX(bubbleContainer.getWidth() / 2);
         bubbleTail.setLayoutY(bubbleContainer.getHeight());
         
-        // X 버튼과 최소화 버튼 표시 여부 설정 (STRATEGY 타입만 표시)
-        closeButton.setVisible(type == BubbleType.STRATEGY);
-        minimizeButton.setVisible(type == BubbleType.STRATEGY);
+        // 모든 말풍선에 X 버튼과 최소화 버튼 항상 표시
+        closeButton.setVisible(true);
+        minimizeButton.setVisible(true);
         
-        // 페이드 인 애니메이션 (95% 투명도로 설정하여 배경이 약간 보이도록)
+        System.out.println("[DEBUG] 말풍선 표시됨 - 타입: " + type + ", 메시지: " + message.substring(0, Math.min(50, message.length())) + "...");
+        
+        // 페이드 인 애니메이션 (투명도를 낮춰서 배경이 잘 보이도록)
         this.setVisible(true);
         FadeTransition fadeIn = new FadeTransition(Duration.millis(300), this);
         fadeIn.setFromValue(0.0);
-        fadeIn.setToValue(0.95);
+        fadeIn.setToValue(0.85); // 투명도 개선
         fadeIn.play();
         
         // 공략 조언이 아닌 경우만 자동으로 숨기기
@@ -398,30 +442,30 @@ public class SpeechBubble extends Group {
         
         switch (type) {
             case ADVICE:
-                bubbleColor = Color.web("#1565C0", 0.9); // 진한 블루, 90% 불투명
+                bubbleColor = Color.web("#1565C0", 0.6); // 진한 블루, 60% 불투명으로 개선
                 borderColor = Color.web("#0D47A1"); // 더 진한 블루
                 break;
             case WARNING:
-                bubbleColor = Color.web("#EF6C00", 0.9); // 진한 오렌지, 90% 불투명
+                bubbleColor = Color.web("#EF6C00", 0.6); // 진한 오렌지, 60% 불투명으로 개선
                 borderColor = Color.web("#BF360C"); // 더 진한 오렌지
                 break;
             case SUCCESS:
-                bubbleColor = Color.web("#2E7D32", 0.9); // 진한 그린, 90% 불투명
+                bubbleColor = Color.web("#2E7D32", 0.6); // 진한 그린, 60% 불투명으로 개선
                 borderColor = Color.web("#1B5E20"); // 더 진한 그린
                 break;
             case THINKING:
-                bubbleColor = Color.web("#6A1B9A", 0.9); // 진한 퍼플, 90% 불투명
+                bubbleColor = Color.web("#6A1B9A", 0.6); // 진한 퍼플, 60% 불투명으로 개선
                 borderColor = Color.web("#4A148C"); // 더 진한 퍼플
                 // 생각하는 말풍선은 원형으로 변경
                 bubbleContainer.setStyle("-fx-background-radius: 50%; -fx-border-radius: 50%;");
                 break;
             case STRATEGY:
-                bubbleColor = Color.web("#D32F2F", 0.9); // 진한 빨강, 90% 불투명 (공략 전용)
+                bubbleColor = Color.web("#D32F2F", 0.65); // 진한 빨강, 65% 불투명 (공략은 조금 더 진하게)
                 borderColor = Color.web("#B71C1C"); // 더 진한 빨강
                 break;
             case NORMAL:
             default:
-                bubbleColor = Color.web("#424242", 0.9); // 진한 그레이, 90% 불투명
+                bubbleColor = Color.web("#424242", 0.6); // 진한 그레이, 60% 불투명으로 개선
                 borderColor = Color.web("#212121"); // 더 진한 그레이
                 break;
         }
@@ -435,12 +479,39 @@ public class SpeechBubble extends Group {
         bubbleContainer.setBackground(new Background(backgroundFill));
         
         // 텍스트 색상 및 그림자 효과 업데이트
-        textLabel.setStyle(
+        textArea.setStyle(
             "-fx-font-family: 'Malgun Gothic'; " +
             "-fx-font-size: 13px; " +
             "-fx-text-fill: " + textColor + "; " +
             "-fx-font-weight: bold; " +
-            "-fx-effect: dropshadow(gaussian, " + shadowColor + ", 2, 0.8, 1, 1);"
+            "-fx-control-inner-background: transparent; " +
+            "-fx-background-color: transparent; " +
+            "-fx-border-width: 0; " +
+            "-fx-focus-color: transparent; " +
+            "-fx-faint-focus-color: transparent; " +
+            "-fx-highlight-fill: rgba(255,255,255,0.2); " +
+            "-fx-highlight-text-fill: white; " +
+            "-fx-text-box-border: transparent; " +
+            "-fx-effect: dropshadow(gaussian, " + shadowColor + ", 2, 0.8, 1, 1); " +
+            
+            // 스크롤바 스타일링
+            ".scroll-bar:vertical { " +
+            "    -fx-background-color: rgba(255,255,255,0.3); " +
+            "    -fx-background-radius: 6px; " +
+            "    -fx-pref-width: 8px; " +
+            "} " +
+            ".scroll-bar:vertical .thumb { " +
+            "    -fx-background-color: rgba(255,255,255,0.7); " +
+            "    -fx-background-radius: 4px; " +
+            "} " +
+            ".scroll-bar:vertical .track { " +
+            "    -fx-background-color: rgba(0,0,0,0.1); " +
+            "    -fx-background-radius: 6px; " +
+            "} " +
+            ".scroll-bar:vertical .increment-button, .scroll-bar:vertical .decrement-button { " +
+            "    -fx-opacity: 0; " +
+            "    -fx-pref-height: 0; " +
+            "}"
         );
         
         // 테두리 설정 (더 굵게)
@@ -499,10 +570,23 @@ public class SpeechBubble extends Group {
      * 말풍선 숨기기
      */
     public void hide() {
+        if (!this.isVisible()) return; // 이미 숨겨진 경우 무시
+        
+        System.out.println("[DEBUG] 말풍선 숨기기 시작 - 현재 투명도: " + this.getOpacity());
         FadeTransition fadeOut = new FadeTransition(Duration.millis(300), this);
-        fadeOut.setFromValue(0.95);
+        fadeOut.setFromValue(this.getOpacity()); // 현재 투명도에서 시작
         fadeOut.setToValue(0.0);
-        fadeOut.setOnFinished(e -> this.setVisible(false));
+        fadeOut.setOnFinished(e -> {
+            this.setVisible(false);
+            // 최소화 상태도 초기화
+            if (isMinimized) {
+                isMinimized = false;
+                bubbleContainer.setVisible(true);
+                bubbleTail.setVisible(true);
+                minimizedBar.setVisible(false);
+            }
+            System.out.println("[DEBUG] 말풍선 숨기기 완료");
+        });
         fadeOut.play();
     }
     

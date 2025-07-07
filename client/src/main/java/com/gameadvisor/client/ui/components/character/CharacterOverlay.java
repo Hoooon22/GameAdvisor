@@ -189,64 +189,87 @@ public class CharacterOverlay {
         isAnalyzing = true;
         updateScreenAnalysisButtonState();
         
-        // 로딩 메시지 표시
-        makeCharacterSpeak("화면 분석중...", SpeechBubble.BubbleType.THINKING);
+        // 첫 번째 단계 메시지 표시
+        makeCharacterSpeak("🔍 화면 캡쳐중...", SpeechBubble.BubbleType.THINKING);
         character.setState(AdvisorCharacter.AnimationState.THINKING);
         
         // 백그라운드에서 공략 분석 수행
         Task<ScreenAnalysisResponse> strategyTask = new Task<ScreenAnalysisResponse>() {
             @Override
             protected ScreenAnalysisResponse call() throws Exception {
-                // 게임 창의 클라이언트 영역만 캡쳐 (타이틀바, 테두리 제외)
-                HWND gameHwnd = currentGameInfo.getHwnd();
-                if (gameHwnd == null) {
-                    throw new Exception("게임 윈도우 핸들을 찾을 수 없습니다.");
+                try {
+                    // 게임 창의 클라이언트 영역만 캡쳐 (타이틀바, 테두리 제외)
+                    HWND gameHwnd = currentGameInfo.getHwnd();
+                    if (gameHwnd == null) {
+                        throw new Exception("게임 윈도우 핸들을 찾을 수 없습니다.");
+                    }
+                    
+                    // 게임 윈도우를 최상위로 가져오고 클라이언트 영역 준비
+                    RECT gameClientRect = WindowUtils.prepareGameWindowForCapture(gameHwnd);
+                    if (gameClientRect == null) {
+                        throw new Exception("게임 윈도우 클라이언트 영역을 가져올 수 없습니다.");
+                    }
+                    
+                    // 클라이언트 영역이 유효한 크기인지 확인
+                    int width = gameClientRect.right - gameClientRect.left;
+                    int height = gameClientRect.bottom - gameClientRect.top;
+                    if (width <= 0 || height <= 0) {
+                        throw new Exception("게임 윈도우 크기가 유효하지 않습니다: " + width + "x" + height);
+                    }
+                    
+                    System.out.println("[DEBUG] 게임 클라이언트 영역 캡쳐: " + 
+                        gameClientRect.left + "," + gameClientRect.top + " " + width + "x" + height);
+                    
+                    Rectangle captureRect = new Rectangle(
+                        gameClientRect.left, 
+                        gameClientRect.top, 
+                        width, 
+                        height
+                    );
+                    
+                    // 화면 캡쳐 실행
+                    String capturedImage = ScreenCaptureUtil.captureGameWindow(captureRect);
+                    
+                    // 캡쳐 완료 메시지 표시
+                    Platform.runLater(() -> {
+                        makeCharacterSpeak("✅ 화면 캡쳐 완료!\n🤖 AI 분석중...", SpeechBubble.BubbleType.THINKING);
+                    });
+                    
+                    // 잠시 대기 (사용자가 메시지를 볼 수 있도록)
+                    Thread.sleep(800);
+                    
+                    // 공략 중심 분석 요청 생성
+                    String strategyPrompt = String.format(
+                        "%s 게임의 현재 화면을 보고 다음 내용으로 상세한 공략 가이드를 제공해줘:\n\n" +
+                        "1. 현재 상황 분석 (우선순위, 위험요소, 기회)\n" +
+                        "2. 다음에 해야 할 구체적인 행동 (단계별 가이드)\n" +
+                        "3. 전략적 팁과 주의사항\n" +
+                        "4. 효율적인 리소스 관리 방법\n\n" +
+                        "친근하고 이해하기 쉬운 한국어로 답변해주고, 이모지를 사용해서 재미있게 설명해줘!",
+                        currentGameInfo.getGameName()
+                    );
+                    
+                    ScreenAnalysisRequest request = new ScreenAnalysisRequest(
+                        capturedImage,
+                        currentGameInfo.getGameName(),
+                        strategyPrompt
+                    );
+                    
+                    // API 호출 시작 메시지
+                    Platform.runLater(() -> {
+                        makeCharacterSpeak("⚡ 서버와 통신중...\n잠시만 기다려주세요!", SpeechBubble.BubbleType.THINKING);
+                    });
+                    
+                    // API 호출
+                    return apiClient.analyzeScreen(request);
+                    
+                } catch (Exception e) {
+                    // 에러 발생 시 즉시 UI 업데이트
+                    Platform.runLater(() -> {
+                        makeCharacterSpeak("❌ 캡쳐 중 오류가 발생했습니다:\n" + e.getMessage(), SpeechBubble.BubbleType.WARNING);
+                    });
+                    throw e;
                 }
-                
-                // 게임 윈도우를 최상위로 가져오고 클라이언트 영역 준비
-                RECT gameClientRect = WindowUtils.prepareGameWindowForCapture(gameHwnd);
-                if (gameClientRect == null) {
-                    throw new Exception("게임 윈도우 클라이언트 영역을 가져올 수 없습니다.");
-                }
-                
-                // 클라이언트 영역이 유효한 크기인지 확인
-                int width = gameClientRect.right - gameClientRect.left;
-                int height = gameClientRect.bottom - gameClientRect.top;
-                if (width <= 0 || height <= 0) {
-                    throw new Exception("게임 윈도우 크기가 유효하지 않습니다: " + width + "x" + height);
-                }
-                
-                System.out.println("[DEBUG] 게임 클라이언트 영역 캡쳐: " + 
-                    gameClientRect.left + "," + gameClientRect.top + " " + width + "x" + height);
-                
-                Rectangle captureRect = new Rectangle(
-                    gameClientRect.left, 
-                    gameClientRect.top, 
-                    width, 
-                    height
-                );
-                
-                String capturedImage = ScreenCaptureUtil.captureGameWindow(captureRect);
-                
-                // 공략 중심 분석 요청 생성
-                String strategyPrompt = String.format(
-                    "%s 게임의 현재 화면을 보고 다음 내용으로 상세한 공략 가이드를 제공해줘:\n\n" +
-                    "1. 현재 상황 분석 (우선순위, 위험요소, 기회)\n" +
-                    "2. 다음에 해야 할 구체적인 행동 (단계별 가이드)\n" +
-                    "3. 전략적 팁과 주의사항\n" +
-                    "4. 효율적인 리소스 관리 방법\n\n" +
-                    "친근하고 이해하기 쉬운 한국어로 답변해주고, 이모지를 사용해서 재미있게 설명해줘!",
-                    currentGameInfo.getGameName()
-                );
-                
-                ScreenAnalysisRequest request = new ScreenAnalysisRequest(
-                    capturedImage,
-                    currentGameInfo.getGameName(),
-                    strategyPrompt
-                );
-                
-                // API 호출
-                return apiClient.analyzeScreen(request);
             }
         };
         
@@ -259,10 +282,10 @@ public class CharacterOverlay {
                 
                 if (response.isSuccess()) {
                     character.setState(AdvisorCharacter.AnimationState.TALKING);
-                    makeCharacterSpeak(response.getAnalysis(), SpeechBubble.BubbleType.STRATEGY);
+                    makeCharacterSpeak("🎉 분석 완료!\n\n" + response.getAnalysis(), SpeechBubble.BubbleType.STRATEGY);
                 } else {
                     character.setState(AdvisorCharacter.AnimationState.IDLE);
-                    makeCharacterSpeak("공략 분석에 실패했습니다: " + response.getErrorMessage(), SpeechBubble.BubbleType.WARNING);
+                    makeCharacterSpeak("❌ 공략 분석에 실패했습니다:\n" + response.getErrorMessage(), SpeechBubble.BubbleType.WARNING);
                 }
             });
         });
@@ -274,8 +297,10 @@ public class CharacterOverlay {
                 updateScreenAnalysisButtonState();
                 
                 character.setState(AdvisorCharacter.AnimationState.IDLE);
-                makeCharacterSpeak("공략 분석 중 오류가 발생했습니다.", SpeechBubble.BubbleType.WARNING);
-                System.err.println("공략 분석 실패: " + strategyTask.getException().getMessage());
+                Throwable exception = strategyTask.getException();
+                String errorMessage = exception != null ? exception.getMessage() : "알 수 없는 오류";
+                makeCharacterSpeak("❌ 공략 분석 중 오류가 발생했습니다:\n" + errorMessage, SpeechBubble.BubbleType.WARNING);
+                System.err.println("공략 분석 실패: " + errorMessage);
             });
         });
         

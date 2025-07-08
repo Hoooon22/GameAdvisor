@@ -173,6 +173,44 @@ public class WebLearningController {
     }
     
     /**
+     * 업데이트된 전략 가이드 URL들을 모두 수집하고 벡터 DB에 학습시킵니다.
+     */
+    @PostMapping("/collect-strategy-guides")
+    public ResponseEntity<Map<String, Object>> collectStrategyGuides() {
+        log.info("전략 가이드 URL 전체 수집 요청");
+        
+        Map<String, Object> response = new HashMap<>();
+        
+        try {
+            // 비동기로 전략 가이드 수집 작업 실행
+            CompletableFuture.runAsync(() -> {
+                webDataCollectionService.collectAllStrategyGuides();
+            });
+            
+            response.put("success", true);
+            response.put("message", "전략 가이드 URL 수집이 백그라운드에서 시작되었습니다.");
+            response.put("description", "총 100개 이상의 세분화된 Bloons TD 6 wiki 페이지를 수집합니다.");
+            response.put("categories", new String[]{
+                "기본 게임플레이", "타워 카테고리", "개별 타워", "파라곤", "히어로",
+                "블룬 타입", "맵", "게임 모드", "멀티플레이어", "커스텀 요소",
+                "업그레이드", "진행 상황", "고급 전략"
+            });
+            response.put("status", "processing");
+            
+            return ResponseEntity.ok(response);
+            
+        } catch (Exception e) {
+            log.error("전략 가이드 수집 시작 실패: {}", e.getMessage(), e);
+            
+            response.put("success", false);
+            response.put("message", "전략 가이드 수집 시작에 실패했습니다: " + e.getMessage());
+            response.put("error", e.getMessage());
+            
+            return ResponseEntity.status(500).body(response);
+        }
+    }
+    
+    /**
      * 사용자가 직접 지정한 URL에서 웹 자료를 수집합니다.
      */
     @PostMapping("/collect-url")
@@ -360,66 +398,102 @@ public class WebLearningController {
     }
     
     /**
-     * 고품질 전략 가이드에서 직접 자료를 수집합니다.
+     * 벡터 DB를 초기화하고 개선된 방식으로 처음부터 학습시킵니다.
      */
-    @PostMapping("/collect-strategy-guides")
-    public ResponseEntity<Map<String, Object>> collectStrategyGuides() {
-        log.info("고품질 전략 가이드 수집 API 호출");
+    @PostMapping("/reset-and-relearn")
+    public ResponseEntity<Map<String, Object>> resetAndRelearn(@RequestParam(required = false, defaultValue = "false") boolean confirmReset) {
+        log.info("DB 초기화 및 재학습 요청 - 확인: {}", confirmReset);
         
         Map<String, Object> response = new HashMap<>();
         
         try {
-                         // 실제 전략 가이드 URL들 (나무위키 하위 링크들 포함)
-             List<String> strategyUrls = Arrays.asList(
-                 // 메인 전략 페이지
-                 "https://namu.wiki/w/블룬스 TD 6/전략",
-                 "https://namu.wiki/w/블룬스 TD 6/영웅",
-                 "https://namu.wiki/w/블룬스 TD 6/타워",
-                 
-                 // 타워 카테고리별 전략 - 나무위키 하위 링크들
-                 "https://namu.wiki/w/블룬스 TD 6/타워/1차 공격",
-                 "https://namu.wiki/w/블룬스 TD 6/타워/군사",
-                 "https://namu.wiki/w/블룬스 TD 6/타워/마법",
-                 "https://namu.wiki/w/블룬스 TD 6/타워/지원",
-                 "https://namu.wiki/w/블룬스 TD 6/파라곤",
-                 
-                 // 풍선 및 라운드 전략
-                 "https://namu.wiki/w/블룬스 TD 6/풍선",
-                 "https://namu.wiki/w/블룬스 TD 6/라운드",
-                 "https://namu.wiki/w/블룬스 TD 6/보스",
-                 "https://namu.wiki/w/블룬스 TD 6/황금 풍선",
-                 
-                 // 트랙별 전략
-                 "https://namu.wiki/w/블룬스 TD 6/맵/초보",
-                 "https://namu.wiki/w/블룬스 TD 6/맵/중급",
-                 "https://namu.wiki/w/블룬스 TD 6/맵/고급",
-                 "https://namu.wiki/w/블룬스 TD 6/맵/전문",
-                 "https://namu.wiki/w/블룬스 TD 6/맵/기타",
-                 
-                 // 게임 플레이 전략
-                 "https://namu.wiki/w/블룬스 TD 6/게임 모드",
-                 "https://namu.wiki/w/블룬스 TD 6/원숭이 지식",
-                 "https://namu.wiki/w/블룬스 TD 6/퀘스트",
-                 
-                 // 수집 요소
-                 "https://namu.wiki/w/블룬스 TD 6/트로피 상점",
-                 "https://namu.wiki/w/블룬스 TD 6/업적"
-             );
+            if (!confirmReset) {
+                response.put("success", false);
+                response.put("message", "DB 초기화에는 confirmReset=true 파라미터가 필요합니다.");
+                response.put("warning", "⚠️ 이 작업은 기존의 모든 학습된 데이터를 삭제합니다!");
+                response.put("instruction", "확실하다면 ?confirmReset=true를 추가하여 다시 요청하세요.");
+                return ResponseEntity.badRequest().body(response);
+            }
             
-            webDataCollectionService.collectFromMultipleUrls(strategyUrls, "strategy_guide");
+            // 비동기로 초기화 및 재학습 작업 실행
+            CompletableFuture.runAsync(() -> {
+                try {
+                    log.info("🔄 벡터 DB 초기화 및 재학습 시작");
+                    
+                    // 1. 기존 데이터 초기화 (Repository를 통해)
+                    log.info("📊 기존 데이터 초기화 중...");
+                    webDataCollectionService.clearAllBloonsTDData();
+                    
+                    // 잠시 대기
+                    Thread.sleep(2000);
+                    
+                    // 2. 개선된 방식으로 전략 가이드 수집
+                    log.info("📚 전략 가이드 수집 시작 (페이지당 여러 지식 추출)...");
+                    webDataCollectionService.collectAllStrategyGuides();
+                    
+                    // 3. 추가 웹 자료 수집
+                    log.info("🌐 추가 웹 자료 수집 시작...");
+                    webDataCollectionService.collectAndLearnFromWeb();
+                    
+                    log.info("✅ 벡터 DB 초기화 및 재학습 완료!");
+                    
+                } catch (Exception e) {
+                    log.error("❌ 벡터 DB 초기화 및 재학습 실패: {}", e.getMessage(), e);
+                }
+            });
             
             response.put("success", true);
-            response.put("message", "고품질 전략 가이드 수집이 시작되었습니다");
-            response.put("collectedUrls", strategyUrls.size());
-            response.put("urls", strategyUrls);
+            response.put("message", "🚀 벡터 DB 초기화 및 재학습이 시작되었습니다!");
+            response.put("status", "processing");
+            response.put("improvements", Arrays.asList(
+                "📄 한 페이지에서 여러 전략 지식 추출",
+                "🎯 섹션별 세분화된 정보 저장", 
+                "🏷️ 더 정확한 태그 및 카테고리 분류",
+                "📈 향상된 신뢰도 및 품질 관리",
+                "🔍 더 정밀한 검색을 위한 구조화"
+            ));
+            response.put("estimated_time", "15-30분");
+            response.put("expected_knowledge_count", "1000+ 개의 세분화된 전략 지식");
             
             return ResponseEntity.ok(response);
             
         } catch (Exception e) {
-            log.error("전략 가이드 수집 실패: {}", e.getMessage(), e);
+            log.error("DB 초기화 및 재학습 시작 실패: {}", e.getMessage(), e);
+            
             response.put("success", false);
-            response.put("message", "전략 가이드 수집에 실패했습니다: " + e.getMessage());
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+            response.put("message", "DB 초기화 및 재학습 시작에 실패했습니다: " + e.getMessage());
+            response.put("error", e.getMessage());
+            
+            return ResponseEntity.status(500).body(response);
+        }
+    }
+    
+    /**
+     * 현재 벡터 DB의 지식 통계를 확인합니다.
+     */
+    @GetMapping("/knowledge-stats")
+    public ResponseEntity<Map<String, Object>> getKnowledgeStats() {
+        log.info("벡터 DB 지식 통계 요청");
+        
+        Map<String, Object> response = new HashMap<>();
+        
+        try {
+            Map<String, Object> stats = webDataCollectionService.getKnowledgeStatistics();
+            
+            response.put("success", true);
+            response.put("statistics", stats);
+            response.put("message", "벡터 DB 통계 조회 완료");
+            
+            return ResponseEntity.ok(response);
+            
+        } catch (Exception e) {
+            log.error("벡터 DB 통계 조회 실패: {}", e.getMessage(), e);
+            
+            response.put("success", false);
+            response.put("message", "벡터 DB 통계 조회에 실패했습니다: " + e.getMessage());
+            response.put("error", e.getMessage());
+            
+            return ResponseEntity.status(500).body(response);
         }
     }
     
@@ -437,6 +511,8 @@ public class WebLearningController {
         endpoints.put("POST /collect-url?url={url}&category={category}", "사용자가 지정한 URL에서 웹 자료를 수집합니다.");
         endpoints.put("POST /collect-urls (JSON body)", "여러 URL을 한 번에 수집합니다.");
         endpoints.put("POST /collect-site-deep?baseUrl={url}&category={category}&maxDepth={depth}&maxPages={pages}", "사이트를 깊이 크롤링하여 하위 페이지들도 함께 수집합니다.");
+        endpoints.put("POST /reset-and-relearn?confirmReset={true/false}", "벡터 DB를 초기화하고 개선된 방식으로 처음부터 학습시킵니다.");
+        endpoints.put("GET /knowledge-stats", "현재 벡터 DB의 지식 통계를 확인합니다.");
         endpoints.put("GET /status", "웹 학습 서비스 상태를 확인합니다.");
         endpoints.put("GET /help", "사용 가능한 API 목록을 보여줍니다.");
         
@@ -462,5 +538,46 @@ public class WebLearningController {
         ));
         
         return ResponseEntity.ok(response);
+    }
+
+    /**
+     * 단일 URL에서 모든 지식을 깊이 있게 추출합니다.
+     */
+    @PostMapping("/learn-single-url")
+    public ResponseEntity<Map<String, Object>> learnFromSingleUrl(
+            @RequestParam String url,
+            @RequestParam(required = false, defaultValue = "BloonsTD") String category,
+            @RequestParam(required = false, defaultValue = "false") boolean resetFirst) {
+        
+        log.info("단일 URL 집중 학습 시작: {} (카테고리: {}, 초기화: {})", url, category, resetFirst);
+        
+        Map<String, Object> response = new HashMap<>();
+        
+        try {
+            if (resetFirst) {
+                log.info("🗑️ 기존 데이터 초기화 중...");
+                webDataCollectionService.clearAllBloonsTDData();
+                response.put("초기화", "완료");
+            }
+            
+            // 비동기로 단일 URL 학습 시작
+            CompletableFuture<Map<String, Object>> future = webDataCollectionService.learnFromSingleUrlDeep(url, category);
+            
+            response.put("success", true);
+            response.put("message", "🎯 단일 URL 집중 학습이 시작되었습니다!");
+            response.put("url", url);
+            response.put("category", category);
+            response.put("status", "processing");
+            response.put("estimated_time", "5-15분");
+            response.put("description", "메인 페이지의 모든 섹션을 개별 지식으로 추출합니다");
+            
+            return ResponseEntity.ok(response);
+            
+        } catch (Exception e) {
+            log.error("단일 URL 학습 실패: {}", e.getMessage(), e);
+            response.put("success", false);
+            response.put("error", e.getMessage());
+            return ResponseEntity.status(500).body(response);
+        }
     }
 } 

@@ -3,7 +3,9 @@ package com.gameadvisor.service.vector;
 import com.gameadvisor.model.vector.BaseGameKnowledge;
 import com.gameadvisor.model.vector.MasterDuelKnowledge;
 import com.gameadvisor.model.vector.VectorSearchResult;
+import com.gameadvisor.repository.vector.MasterDuelVectorRepository;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -12,7 +14,12 @@ import java.util.List;
 @Service
 public class MasterDuelVectorService implements GameVectorService {
     
-    // TODO: Repository 주입 예정
+    private final MasterDuelVectorRepository repository;
+    
+    @Autowired
+    public MasterDuelVectorService(MasterDuelVectorRepository repository) {
+        this.repository = repository;
+    }
     
     @Override
     public List<VectorSearchResult> searchSimilar(String situation, int limit) {
@@ -30,28 +37,57 @@ public class MasterDuelVectorService implements GameVectorService {
         log.info("추출된 정보 - 유형: {}, 아키타입: {}, 포맷: {}", 
                 situationType, archetype, formatType);
         
-        // TODO: Repository를 통한 실제 검색 구현
-        return List.of();
+        // 임베딩 벡터 생성 (실제로는 Gemini API 등을 사용해야 함)
+        List<Double> queryEmbedding = generateQueryEmbedding(situation);
+        
+        // 상황 유형별 검색 시도
+        if (situationType != null) {
+            List<VectorSearchResult> results = repository.findSimilarByType(queryEmbedding, situationType, limit);
+            if (!results.isEmpty()) {
+                return results;
+            }
+        }
+        
+        // 아키타입별 검색 시도
+        if (archetype != null) {
+            List<VectorSearchResult> results = repository.findSimilarByArchetype(queryEmbedding, archetype, limit);
+            if (!results.isEmpty()) {
+                return results;
+            }
+        }
+        
+        // 포맷별 검색 시도
+        if (formatType != null) {
+            List<VectorSearchResult> results = repository.findSimilarByFormatType(queryEmbedding, formatType, limit);
+            if (!results.isEmpty()) {
+                return results;
+            }
+        }
+        
+        // 전체 검색
+        return repository.findSimilar(queryEmbedding, limit);
     }
     
     @Override
     public void saveKnowledge(BaseGameKnowledge knowledge) {
         if (knowledge instanceof MasterDuelKnowledge mdKnowledge) {
             log.info("Master Duel 지식 저장: {}", mdKnowledge.getTitle());
-            // TODO: Repository를 통한 저장 구현
+            repository.save(mdKnowledge);
+        } else {
+            log.warn("MasterDuel 지식이 아닌 데이터 저장 시도: {}", knowledge.getClass().getSimpleName());
         }
     }
     
     @Override
     public void incrementUsage(String knowledgeId) {
         log.info("Master Duel 지식 사용량 증가: {}", knowledgeId);
-        // TODO: Repository를 통한 사용량 업데이트
+        repository.incrementUsageCount(knowledgeId);
     }
     
     @Override
     public void updateSuccessMetric(String knowledgeId, double successMetric) {
         log.info("Master Duel 지식 승률 업데이트: {} -> {}", knowledgeId, successMetric);
-        // TODO: Repository를 통한 승률 업데이트
+        repository.updateSuccessMetric(knowledgeId, successMetric);
     }
     
     @Override
@@ -98,27 +134,27 @@ public class MasterDuelVectorService implements GameVectorService {
             return MasterDuelKnowledge.SituationType.TURN_OPTIMIZATION;
         }
         
-        return "general"; // 기본값
+        return null;
     }
     
     // 아키타입 추출
     private String extractArchetype(String situation) {
         String lower = situation.toLowerCase();
         
-        if (lower.contains("elemental") || lower.contains("hero") || lower.contains("엘리멘탈") || lower.contains("히어로")) {
+        if (lower.contains("elemental") || lower.contains("hero") || lower.contains("히어로")) {
             return MasterDuelKnowledge.Archetype.ELEMENTAL_HERO;
         }
-        if (lower.contains("blue") || lower.contains("eyes") || lower.contains("블루") || lower.contains("아이즈")) {
+        if (lower.contains("blue") || lower.contains("eyes") || lower.contains("블루아이즈")) {
             return MasterDuelKnowledge.Archetype.BLUE_EYES;
         }
-        if (lower.contains("dragon") || lower.contains("maid") || lower.contains("드래곤") || lower.contains("메이드")) {
+        if (lower.contains("dragon") || lower.contains("maid") || lower.contains("드래곤메이드")) {
             return MasterDuelKnowledge.Archetype.DRAGON_MAID;
         }
         if (lower.contains("eldlich") || lower.contains("엘드리치")) {
             return MasterDuelKnowledge.Archetype.ELDLICH;
         }
         
-        return MasterDuelKnowledge.Archetype.GENERIC; // 기본값
+        return MasterDuelKnowledge.Archetype.GENERIC;
     }
     
     // 포맷 유형 추출
@@ -136,5 +172,42 @@ public class MasterDuelVectorService implements GameVectorService {
         }
         
         return "ranked"; // 기본값
+    }
+    
+    // 임시 임베딩 생성 (실제로는 Gemini API나 다른 임베딩 모델 사용)
+    private List<Double> generateQueryEmbedding(String query) {
+        // 간단한 해시 기반 임베딩 (실제 구현시에는 AI 모델 사용)
+        List<Double> embedding = new java.util.ArrayList<>();
+        int hash = query.hashCode();
+        
+        for (int i = 0; i < 384; i++) {
+            double value = Math.sin(hash * (i + 1) * 0.1) * 0.5;
+            embedding.add(value);
+        }
+        
+        return embedding;
+    }
+    
+    // MasterDuel 특화 검색 메서드들
+    public List<VectorSearchResult> searchByArchetype(String archetype, int limit) {
+        List<Double> queryEmbedding = generateQueryEmbedding(archetype);
+        return repository.findSimilarByArchetype(queryEmbedding, archetype, limit);
+    }
+    
+    public List<VectorSearchResult> searchByFormatType(String formatType, int limit) {
+        List<Double> queryEmbedding = generateQueryEmbedding(formatType);
+        return repository.findSimilarByFormatType(queryEmbedding, formatType, limit);
+    }
+    
+    public long getKnowledgeCount() {
+        return repository.count();
+    }
+    
+    public long getKnowledgeCountByArchetype(String archetype) {
+        return repository.countByArchetype(archetype);
+    }
+    
+    public long getKnowledgeCountByFormat(String formatType) {
+        return repository.countByFormatType(formatType);
     }
 } 

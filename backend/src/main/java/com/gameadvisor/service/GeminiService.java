@@ -92,22 +92,27 @@ public class GeminiService {
     }
     
     /**
-     * 화면 분석 및 조언 제공 (웹 검색 포함)
+     * 화면 분석 및 조언 제공 (벡터 DB + 웹 검색 포함)
      */
     public ScreenAnalysisResponse analyzeScreen(ScreenAnalysisRequest request) {
         try {
             log.info("화면 분석 요청: 게임={}", request.getGameName());
             
-            // 1단계: 기본 화면 분석
+            // 1단계: 기본 화면 분석으로 현재 상황 파악
             String initialPrompt = buildInitialAnalysisPrompt(request);
             GeminiRequest initialRequest = buildGeminiImageRequest(initialPrompt, request.getImageBase64());
             GeminiResponse initialResponse = callGeminiApi(initialRequest);
             String initialAnalysis = extractAdviceFromResponse(initialResponse);
             
-            // 2단계: 화면 분석 결과를 바탕으로 웹 검색 키워드 추출
+            log.info("화면 분석 완료: {}", initialAnalysis.substring(0, Math.min(100, initialAnalysis.length())));
+            
+            // 2단계: 화면 분석 결과를 바탕으로 벡터 DB에서 유사한 상황 검색
+            List<VectorSearchResult> vectorResults = searchVectorKnowledgeForScreen(request.getGameName(), initialAnalysis);
+            
+            // 3단계: 화면 분석 결과를 바탕으로 웹 검색 키워드 추출
             List<String> searchQueries = extractSearchQueries(initialAnalysis, request.getGameName());
             
-            // 3단계: 웹 검색 수행
+            // 4단계: 웹 검색 수행
             List<WebSearchResponse.SearchResult> searchResults = new ArrayList<>();
             for (String query : searchQueries) {
                 WebSearchRequest searchRequest = WebSearchRequest.builder()
@@ -123,11 +128,17 @@ public class GeminiService {
                 }
             }
             
-            // 4단계: 화면 분석 + 웹 검색 결과를 조합한 최종 분석
-            String enhancedPrompt = buildEnhancedAnalysisPrompt(request, initialAnalysis, searchResults);
+            // 5단계: 화면 분석 + 벡터 검색 결과 + 웹 검색 결과를 조합한 최종 분석
+            String enhancedPrompt = buildComprehensiveAnalysisPrompt(request, initialAnalysis, vectorResults, searchResults);
             GeminiRequest enhancedRequest = buildGeminiImageRequest(enhancedPrompt, request.getImageBase64());
             GeminiResponse enhancedResponse = callGeminiApi(enhancedRequest);
             String finalAnalysis = extractAdviceFromResponse(enhancedResponse);
+            
+            // 6단계: 사용된 벡터 지식의 사용량 증가
+            updateVectorKnowledgeUsage(vectorResults);
+            
+            log.info("최종 분석 완료 - 벡터 검색: {}개, 웹 검색: {}개 결과 활용", 
+                    vectorResults.size(), searchResults.size());
             
             return ScreenAnalysisResponse.builder()
                     .analysis(finalAnalysis)
@@ -153,24 +164,25 @@ public class GeminiService {
         }
     }
     
+    /**
+     * 초기 화면 분석을 위한 프롬프트 생성
+     */
     private String buildInitialAnalysisPrompt(ScreenAnalysisRequest request) {
         StringBuilder prompt = new StringBuilder();
-        prompt.append("당신은 게임 전문가이며 친근한 게임 어드바이저입니다. ");
-        prompt.append("제공된 게임 화면을 분석하고 현재 상황을 파악해주세요.\n\n");
+        prompt.append("게임 화면을 분석하여 현재 상황을 정확히 파악해주세요.\n\n");
         
         if (request.getGameName() != null && !request.getGameName().isEmpty()) {
-            prompt.append("게임: ").append(request.getGameName()).append("\n");
+            prompt.append("게임: ").append(request.getGameName()).append("\n\n");
         }
         
-        if (request.getAdditionalContext() != null && !request.getAdditionalContext().isEmpty()) {
-            prompt.append("추가 정보: ").append(request.getAdditionalContext()).append("\n");
-        }
-        
-        prompt.append("\n분석 요청:\n");
-        prompt.append("1. 현재 화면에서 무엇이 일어나고 있는지 설명해주세요.\n");
-        prompt.append("2. 게임 상황, 레벨, 라운드, 캐릭터, 아이템 등을 구체적으로 식별해주세요.\n");
-        prompt.append("3. 플레이어가 직면한 문제나 상황을 파악해주세요.\n\n");
-        prompt.append("응답은 간결하고 구체적으로 작성해주세요.");
+        prompt.append("다음 요소들을 중심으로 현재 상황을 분석해주세요:\n");
+        prompt.append("1. 현재 라운드/레벨/스테이지\n");
+        prompt.append("2. 보유 자원(골드, 경험치, 재료 등)\n");
+        prompt.append("3. 배치된 유닛/건물/캐릭터 현황\n");
+        prompt.append("4. 현재 진행 중인 상황 (전투, 준비 단계 등)\n");
+        prompt.append("5. 화면에서 관찰되는 위험 요소나 기회\n\n");
+        prompt.append("분석 결과는 150자 이내로 간결하고 객관적으로 작성해주세요. ");
+        prompt.append("현재 상황에 대한 사실만 기술하고, 조언이나 의견은 포함하지 마세요.");
         
         return prompt.toString();
     }
@@ -221,38 +233,6 @@ public class GeminiService {
         
         // 최대 3개로 제한
         return queries.subList(0, Math.min(queries.size(), 3));
-    }
-    
-    private String buildEnhancedAnalysisPrompt(ScreenAnalysisRequest request, String initialAnalysis, List<WebSearchResponse.SearchResult> searchResults) {
-        StringBuilder prompt = new StringBuilder();
-        prompt.append("당신은 게임 전문가이며 친근한 게임 어드바이저입니다. ");
-        prompt.append("화면 분석과 웹 검색 결과를 종합하여 최고의 공략 조언을 제공해주세요.\n\n");
-        
-        if (request.getGameName() != null && !request.getGameName().isEmpty()) {
-            prompt.append("게임: ").append(request.getGameName()).append("\n");
-        }
-        
-        prompt.append("\n초기 화면 분석:\n");
-        prompt.append(initialAnalysis).append("\n\n");
-        
-        if (!searchResults.isEmpty()) {
-            prompt.append("관련 공략 정보:\n");
-            for (int i = 0; i < Math.min(searchResults.size(), 5); i++) {
-                WebSearchResponse.SearchResult result = searchResults.get(i);
-                prompt.append("- ").append(result.getTitle()).append(": ");
-                prompt.append(result.getSnippet()).append("\n");
-            }
-            prompt.append("\n");
-        }
-        
-        prompt.append("최종 분석 요청:\n");
-        prompt.append("1. 현재 상황에 대한 구체적인 분석\n");
-        prompt.append("2. 다음에 해야 할 행동의 우선순위\n");
-        prompt.append("3. 웹 검색 결과를 활용한 전략적 조언\n");
-        prompt.append("4. 주의사항 및 팁\n\n");
-        prompt.append("친근한 말투로 실용적이고 구체적인 조언을 400자 이내로 작성해주세요.");
-        
-        return prompt.toString();
     }
     
     private GeminiRequest buildGeminiImageRequest(String prompt, String imageBase64) {
@@ -370,6 +350,24 @@ public class GeminiService {
             return List.of();
         }
     }
+
+    /**
+     * 화면 분석 결과를 바탕으로 벡터 DB에서 유사한 상황 검색
+     */
+    private List<VectorSearchResult> searchVectorKnowledgeForScreen(String gameName, String currentSituation) {
+        try {
+            if (!vectorServiceFactory.isSupported(gameName)) {
+                log.debug("지원하지 않는 게임: {}", gameName);
+                return List.of();
+            }
+
+            GameVectorService vectorService = vectorServiceFactory.getService(gameName);
+            return vectorService.searchSimilar(currentSituation, 3);
+        } catch (Exception e) {
+            log.warn("벡터 검색 중 오류 발생: {}", e.getMessage());
+            return List.of();
+        }
+    }
     
     /**
      * 벡터 검색 결과를 포함한 개선된 프롬프트 생성
@@ -404,6 +402,52 @@ public class GeminiService {
         
         prompt.append("위 검증된 전략들을 참고하여 현재 상황에 최적화된 조언을 제공해주세요. ");
         prompt.append("조언은 구체적이고 실행 가능해야 하며, 초보자도 이해할 수 있도록 친근하게 작성해주세요.");
+        
+        return prompt.toString();
+    }
+
+    /**
+     * 화면 분석 + 벡터 검색 + 웹 검색 결과를 포함한 최종 분석 프롬프트 생성
+     */
+    private String buildComprehensiveAnalysisPrompt(ScreenAnalysisRequest request, String initialAnalysis, List<VectorSearchResult> vectorResults, List<WebSearchResponse.SearchResult> searchResults) {
+        StringBuilder prompt = new StringBuilder();
+        prompt.append("당신은 전문 게임 전략가입니다. ");
+        prompt.append("화면 분석과 검증된 전략 정보를 바탕으로 즉시 실행 가능한 게임 내 행동만 제시해주세요.\n\n");
+        
+        if (request.getGameName() != null && !request.getGameName().isEmpty()) {
+            prompt.append("게임: ").append(request.getGameName()).append("\n");
+        }
+        
+        prompt.append("\n현재 화면 상황:\n");
+        prompt.append(initialAnalysis).append("\n\n");
+        
+        if (!vectorResults.isEmpty()) {
+            prompt.append("검증된 전략:\n");
+            for (int i = 0; i < Math.min(vectorResults.size(), 3); i++) {
+                VectorSearchResult result = vectorResults.get(i);
+                prompt.append(String.format("• %s: %s\n", 
+                    result.getKnowledge().getTitle(), 
+                    result.getKnowledge().getAdvice()));
+            }
+            prompt.append("\n");
+        }
+        
+        if (!searchResults.isEmpty()) {
+            prompt.append("추가 전략 정보:\n");
+            for (int i = 0; i < Math.min(searchResults.size(), 3); i++) {
+                WebSearchResponse.SearchResult result = searchResults.get(i);
+                prompt.append("• ").append(result.getSnippet()).append("\n");
+            }
+            prompt.append("\n");
+        }
+        
+        prompt.append("다음 규칙을 엄격히 따라 조언해주세요:\n");
+        prompt.append("1. 게임 내에서 바로 실행할 수 있는 구체적 행동만 제시\n");
+        prompt.append("2. 어떤 유닛/건물/아이템을 어디에 배치/구매/사용할지 명확히 지시\n");
+        prompt.append("3. 우선순위가 높은 순서로 번호를 매겨 제시\n");
+        prompt.append("4. 커뮤니티, 가이드 확인, 연습 등 게임 외부 행동은 절대 언급 금지\n");
+        prompt.append("5. 300자 이내로 간결하게 작성\n\n");
+        prompt.append("현재 상황에서 즉시 해야 할 게임 내 행동을 구체적으로 알려주세요.");
         
         return prompt.toString();
     }

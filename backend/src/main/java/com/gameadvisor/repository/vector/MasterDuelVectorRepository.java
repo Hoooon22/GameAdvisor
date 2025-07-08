@@ -1,7 +1,7 @@
 package com.gameadvisor.repository.vector;
 
 import com.gameadvisor.model.vector.BaseGameKnowledge;
-import com.gameadvisor.model.vector.BloonsTDKnowledge;
+import com.gameadvisor.model.vector.MasterDuelKnowledge;
 import com.gameadvisor.model.vector.VectorSearchResult;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -21,68 +21,68 @@ import java.util.stream.Collectors;
 
 @Slf4j
 @Repository
-public class BloonsTDVectorRepository implements GameVectorRepository<BloonsTDKnowledge> {
+public class MasterDuelVectorRepository implements GameVectorRepository<MasterDuelKnowledge> {
     
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
-    private final RowMapper<BloonsTDKnowledge> rowMapper;
+    private final RowMapper<MasterDuelKnowledge> rowMapper;
     
     @Autowired
-    public BloonsTDVectorRepository(JdbcTemplate jdbcTemplate, ObjectMapper objectMapper) {
+    public MasterDuelVectorRepository(JdbcTemplate jdbcTemplate, ObjectMapper objectMapper) {
         this.jdbcTemplate = jdbcTemplate;
         this.objectMapper = objectMapper;
-        this.rowMapper = new BloonsTDKnowledgeRowMapper();
+        this.rowMapper = new MasterDuelKnowledgeRowMapper();
     }
     
     @Override
-    public void save(BloonsTDKnowledge knowledge) {
+    public void save(MasterDuelKnowledge knowledge) {
         if (knowledge.getId() == null) {
-            knowledge.setId("btd_" + UUID.randomUUID().toString().substring(0, 8));
+            knowledge.setId("md_" + UUID.randomUUID().toString().substring(0, 8));
         }
         
         String sql = """
-            INSERT INTO vector_knowledge_bloonstd 
-            (id, situation_type, round_range, difficulty, tower_types, title, content, advice, 
-             tags, embedding, confidence, success_rate, usage_count)
+            INSERT INTO vector_knowledge_masterduel 
+            (id, situation_type, format_type, archetype, card_types, title, content, advice, 
+             tags, embedding, confidence, win_rate, usage_count)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """;
         
         try {
             String tagsJson = objectMapper.writeValueAsString(knowledge.getTags());
             String embeddingJson = objectMapper.writeValueAsString(knowledge.getEmbedding());
-            String towerTypesJson = objectMapper.writeValueAsString(knowledge.getTowerTypes());
+            String cardTypesJson = objectMapper.writeValueAsString(knowledge.getCardTypes());
             
             jdbcTemplate.update(sql,
                 knowledge.getId(),
                 knowledge.getSituationType(),
-                knowledge.getRoundRange(),
-                knowledge.getDifficulty(),
-                towerTypesJson,
+                knowledge.getFormatType(),
+                knowledge.getArchetype(),
+                cardTypesJson,
                 knowledge.getTitle(),
                 knowledge.getContent(),
                 knowledge.getAdvice(),
                 tagsJson,
                 embeddingJson,
                 knowledge.getConfidence(),
-                knowledge.getSuccessRate(),
+                knowledge.getWinRate(),
                 knowledge.getUsageCount() != null ? knowledge.getUsageCount() : 0
             );
             
-            log.info("BloonsTD 지식 저장 완료: {}", knowledge.getId());
+            log.info("MasterDuel 지식 저장 완료: {}", knowledge.getId());
         } catch (JsonProcessingException e) {
             throw new RuntimeException("JSON 변환 오류", e);
         }
     }
     
     @Override
-    public Optional<BloonsTDKnowledge> findById(String id) {
-        String sql = "SELECT * FROM vector_knowledge_bloonstd WHERE id = ?";
+    public Optional<MasterDuelKnowledge> findById(String id) {
+        String sql = "SELECT * FROM vector_knowledge_masterduel WHERE id = ?";
         
         try {
-            BloonsTDKnowledge knowledge = jdbcTemplate.queryForObject(sql, rowMapper, id);
+            MasterDuelKnowledge knowledge = jdbcTemplate.queryForObject(sql, rowMapper, id);
             return Optional.ofNullable(knowledge);
         } catch (Exception e) {
-            log.warn("BloonsTD 지식 조회 실패: {}", id);
+            log.warn("MasterDuel 지식 조회 실패: {}", id);
             return Optional.empty();
         }
     }
@@ -95,15 +95,15 @@ public class BloonsTDVectorRepository implements GameVectorRepository<BloonsTDKn
     @Override
     public List<VectorSearchResult> findSimilar(List<Double> queryEmbedding, double minSimilarity, int limit) {
         String sql = """
-            SELECT * FROM vector_knowledge_bloonstd 
+            SELECT * FROM vector_knowledge_masterduel 
             WHERE confidence >= 0.5 
-            ORDER BY confidence DESC, success_rate DESC 
+            ORDER BY confidence DESC, win_rate DESC 
             LIMIT ?
             """;
         
         long startTime = System.currentTimeMillis();
         
-        List<BloonsTDKnowledge> candidates = jdbcTemplate.query(sql, rowMapper, Math.min(limit * 5, 50));
+        List<MasterDuelKnowledge> candidates = jdbcTemplate.query(sql, rowMapper, Math.min(limit * 5, 50));
         
         List<VectorSearchResult> results = candidates.stream()
             .map(knowledge -> {
@@ -119,22 +119,22 @@ public class BloonsTDVectorRepository implements GameVectorRepository<BloonsTDKn
             .limit(limit)
             .collect(Collectors.toList());
         
-        log.info("BloonsTD 유사도 검색 완료: {} 개 결과, {}ms", results.size(), System.currentTimeMillis() - startTime);
+        log.info("MasterDuel 유사도 검색 완료: {} 개 결과, {}ms", results.size(), System.currentTimeMillis() - startTime);
         return results;
     }
     
     @Override
     public List<VectorSearchResult> findSimilarByType(List<Double> queryEmbedding, String situationType, int limit) {
         String sql = """
-            SELECT * FROM vector_knowledge_bloonstd 
+            SELECT * FROM vector_knowledge_masterduel 
             WHERE situation_type = ? AND confidence >= 0.5 
-            ORDER BY confidence DESC, success_rate DESC 
+            ORDER BY confidence DESC, win_rate DESC 
             LIMIT ?
             """;
         
         long startTime = System.currentTimeMillis();
         
-        List<BloonsTDKnowledge> candidates = jdbcTemplate.query(sql, rowMapper, situationType, Math.min(limit * 3, 30));
+        List<MasterDuelKnowledge> candidates = jdbcTemplate.query(sql, rowMapper, situationType, Math.min(limit * 3, 30));
         
         return candidates.stream()
             .map(knowledge -> {
@@ -150,18 +150,44 @@ public class BloonsTDVectorRepository implements GameVectorRepository<BloonsTDKn
             .collect(Collectors.toList());
     }
     
-    // BloonsTD 특화 검색 메서드
-    public List<VectorSearchResult> findSimilarByRoundRange(List<Double> queryEmbedding, String roundRange, int limit) {
+    // MasterDuel 특화 검색 메서드
+    public List<VectorSearchResult> findSimilarByArchetype(List<Double> queryEmbedding, String archetype, int limit) {
         String sql = """
-            SELECT * FROM vector_knowledge_bloonstd 
-            WHERE round_range = ? AND confidence >= 0.5 
-            ORDER BY confidence DESC, success_rate DESC 
+            SELECT * FROM vector_knowledge_masterduel 
+            WHERE archetype = ? AND confidence >= 0.5 
+            ORDER BY confidence DESC, win_rate DESC 
             LIMIT ?
             """;
         
         long startTime = System.currentTimeMillis();
         
-        List<BloonsTDKnowledge> candidates = jdbcTemplate.query(sql, rowMapper, roundRange, Math.min(limit * 3, 30));
+        List<MasterDuelKnowledge> candidates = jdbcTemplate.query(sql, rowMapper, archetype, Math.min(limit * 3, 30));
+        
+        return candidates.stream()
+            .map(knowledge -> {
+                double similarity = calculateCosineSimilarity(queryEmbedding, knowledge.getEmbedding());
+                return VectorSearchResult.builder()
+                    .knowledge(knowledge)
+                    .similarity(similarity)
+                    .searchTimeMs(System.currentTimeMillis() - startTime)
+                    .build();
+            })
+            .sorted((a, b) -> a.compareTo(b))
+            .limit(limit)
+            .collect(Collectors.toList());
+    }
+    
+    public List<VectorSearchResult> findSimilarByFormatType(List<Double> queryEmbedding, String formatType, int limit) {
+        String sql = """
+            SELECT * FROM vector_knowledge_masterduel 
+            WHERE format_type = ? AND confidence >= 0.5 
+            ORDER BY confidence DESC, win_rate DESC 
+            LIMIT ?
+            """;
+        
+        long startTime = System.currentTimeMillis();
+        
+        List<MasterDuelKnowledge> candidates = jdbcTemplate.query(sql, rowMapper, formatType, Math.min(limit * 3, 30));
         
         return candidates.stream()
             .map(knowledge -> {
@@ -202,102 +228,58 @@ public class BloonsTDVectorRepository implements GameVectorRepository<BloonsTDKn
     
     @Override
     public void incrementUsageCount(String id) {
-        String sql = "UPDATE vector_knowledge_bloonstd SET usage_count = usage_count + 1 WHERE id = ?";
+        String sql = "UPDATE vector_knowledge_masterduel SET usage_count = usage_count + 1 WHERE id = ?";
         jdbcTemplate.update(sql, id);
     }
     
     @Override
     public void updateSuccessMetric(String id, double successMetric) {
-        String sql = "UPDATE vector_knowledge_bloonstd SET success_rate = ? WHERE id = ?";
+        String sql = "UPDATE vector_knowledge_masterduel SET win_rate = ? WHERE id = ?";
         jdbcTemplate.update(sql, successMetric, id);
     }
     
     @Override
     public long count() {
-        String sql = "SELECT COUNT(*) FROM vector_knowledge_bloonstd";
-        return jdbcTemplate.queryForObject(sql, Long.class);
+        return jdbcTemplate.queryForObject("SELECT COUNT(*) FROM vector_knowledge_masterduel", Long.class);
     }
     
     @Override
     public long countBySituationType(String situationType) {
-        String sql = "SELECT COUNT(*) FROM vector_knowledge_bloonstd WHERE situation_type = ?";
+        String sql = "SELECT COUNT(*) FROM vector_knowledge_masterduel WHERE situation_type = ?";
         return jdbcTemplate.queryForObject(sql, Long.class, situationType);
     }
     
-    /**
-     * 모든 BloonsTD 지식 데이터를 삭제합니다.
-     */
-    public void deleteAll() {
-        String sql = "DELETE FROM vector_knowledge_bloonstd";
-        int deletedCount = jdbcTemplate.update(sql);
-        log.info("모든 BloonsTD 지식 삭제 완료: {} 개", deletedCount);
-    }
-    
-    /**
-     * 난이도별 지식 개수를 조회합니다.
-     */
-    public long countByDifficulty(String difficulty) {
-        String sql = "SELECT COUNT(*) FROM vector_knowledge_bloonstd WHERE difficulty = ?";
-        return jdbcTemplate.queryForObject(sql, Long.class, difficulty);
-    }
-    
-    /**
-     * 라운드 범위별 지식 개수를 조회합니다.
-     */
-    public long countByRoundRange(String roundRange) {
-        String sql = "SELECT COUNT(*) FROM vector_knowledge_bloonstd WHERE round_range = ?";
-        return jdbcTemplate.queryForObject(sql, Long.class, roundRange);
-    }
-    
-    /**
-     * 최근 생성된 10개의 지식을 조회합니다.
-     */
-    public List<BloonsTDKnowledge> findTop10ByOrderByCreatedAtDesc() {
-        String sql = "SELECT * FROM vector_knowledge_bloonstd ORDER BY created_at DESC LIMIT 10";
-        return jdbcTemplate.query(sql, rowMapper);
-    }
-    
-    /**
-     * 평균 신뢰도를 계산합니다.
-     */
-    public Double findAverageConfidence() {
-        String sql = "SELECT AVG(confidence) FROM vector_knowledge_bloonstd";
-        return jdbcTemplate.queryForObject(sql, Double.class);
-    }
-    
-    // 나머지 메서드들은 기본 구현
     @Override
-    public void update(BloonsTDKnowledge knowledge) {
-        // 구현 생략 (필요시 추가)
+    public void update(MasterDuelKnowledge knowledge) {
+        // TODO: 업데이트 로직 구현
     }
     
     @Override
     public void deleteById(String id) {
-        String sql = "DELETE FROM vector_knowledge_bloonstd WHERE id = ?";
+        String sql = "DELETE FROM vector_knowledge_masterduel WHERE id = ?";
         jdbcTemplate.update(sql, id);
     }
     
     @Override
-    public List<BloonsTDKnowledge> findAll() {
-        String sql = "SELECT * FROM vector_knowledge_bloonstd ORDER BY created_at DESC";
+    public List<MasterDuelKnowledge> findAll() {
+        String sql = "SELECT * FROM vector_knowledge_masterduel";
         return jdbcTemplate.query(sql, rowMapper);
     }
     
     @Override
     public List<VectorSearchResult> findSimilarByConfidence(List<Double> queryEmbedding, double minConfidence, int limit) {
-        // 구현 생략 (기본 findSimilar 사용)
         return findSimilar(queryEmbedding, 0.0, limit);
     }
     
     @Override
-    public List<BloonsTDKnowledge> findTopByUsageCount(int limit) {
-        String sql = "SELECT * FROM vector_knowledge_bloonstd ORDER BY usage_count DESC LIMIT ?";
+    public List<MasterDuelKnowledge> findTopByUsageCount(int limit) {
+        String sql = "SELECT * FROM vector_knowledge_masterduel ORDER BY usage_count DESC LIMIT ?";
         return jdbcTemplate.query(sql, rowMapper, limit);
     }
     
     @Override
-    public List<BloonsTDKnowledge> findTopBySuccessMetric(int limit) {
-        String sql = "SELECT * FROM vector_knowledge_bloonstd ORDER BY success_rate DESC LIMIT ?";
+    public List<MasterDuelKnowledge> findTopBySuccessMetric(int limit) {
+        String sql = "SELECT * FROM vector_knowledge_masterduel ORDER BY win_rate DESC LIMIT ?";
         return jdbcTemplate.query(sql, rowMapper, limit);
     }
     
@@ -305,35 +287,51 @@ public class BloonsTDVectorRepository implements GameVectorRepository<BloonsTDKn
     public void updateEmbedding(String id, List<Double> embedding) {
         try {
             String embeddingJson = objectMapper.writeValueAsString(embedding);
-            String sql = "UPDATE vector_knowledge_bloonstd SET embedding = ? WHERE id = ?";
+            String sql = "UPDATE vector_knowledge_masterduel SET embedding = ? WHERE id = ?";
             jdbcTemplate.update(sql, embeddingJson, id);
         } catch (JsonProcessingException e) {
-            throw new RuntimeException("임베딩 업데이트 오류", e);
+            throw new RuntimeException("임베딩 업데이트 실패", e);
         }
     }
     
-    // RowMapper 구현
-    private class BloonsTDKnowledgeRowMapper implements RowMapper<BloonsTDKnowledge> {
+    // MasterDuel 특화 통계 메서드
+    public long countByArchetype(String archetype) {
+        String sql = "SELECT COUNT(*) FROM vector_knowledge_masterduel WHERE archetype = ?";
+        return jdbcTemplate.queryForObject(sql, Long.class, archetype);
+    }
+    
+    public long countByFormatType(String formatType) {
+        String sql = "SELECT COUNT(*) FROM vector_knowledge_masterduel WHERE format_type = ?";
+        return jdbcTemplate.queryForObject(sql, Long.class, formatType);
+    }
+    
+    public void deleteAllData() {
+        String sql = "DELETE FROM vector_knowledge_masterduel";
+        jdbcTemplate.update(sql);
+        log.info("MasterDuel 모든 데이터 삭제 완료");
+    }
+    
+    private class MasterDuelKnowledgeRowMapper implements RowMapper<MasterDuelKnowledge> {
         @Override
-        public BloonsTDKnowledge mapRow(ResultSet rs, int rowNum) throws SQLException {
+        public MasterDuelKnowledge mapRow(ResultSet rs, int rowNum) throws SQLException {
             try {
                 List<String> tags = objectMapper.readValue(rs.getString("tags"), new TypeReference<List<String>>() {});
                 List<Double> embedding = objectMapper.readValue(rs.getString("embedding"), new TypeReference<List<Double>>() {});
-                List<String> towerTypes = objectMapper.readValue(rs.getString("tower_types"), new TypeReference<List<String>>() {});
+                List<String> cardTypes = objectMapper.readValue(rs.getString("card_types"), new TypeReference<List<String>>() {});
                 
-                return BloonsTDKnowledge.builder()
+                return MasterDuelKnowledge.builder()
                     .id(rs.getString("id"))
                     .situationType(rs.getString("situation_type"))
-                    .roundRange(rs.getString("round_range"))
-                    .difficulty(rs.getString("difficulty"))
-                    .towerTypes(towerTypes)
+                    .formatType(rs.getString("format_type"))
+                    .archetype(rs.getString("archetype"))
+                    .cardTypes(cardTypes)
                     .title(rs.getString("title"))
                     .content(rs.getString("content"))
                     .advice(rs.getString("advice"))
                     .tags(tags)
                     .embedding(embedding)
                     .confidence(rs.getDouble("confidence"))
-                    .successRate(rs.getDouble("success_rate"))
+                    .winRate(rs.getDouble("win_rate"))
                     .usageCount(rs.getInt("usage_count"))
                     .createdAt(rs.getTimestamp("created_at").toLocalDateTime())
                     .updatedAt(rs.getTimestamp("updated_at").toLocalDateTime())

@@ -1,0 +1,30 @@
+# 빌드 결과물
+build/
+target/
+*.jar
+*.war
+
+# IDE 파일들
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+
+# 운영체제 파일들
+.DS_Store
+Thumbs.db
+
+# 로그 파일들
+*.log
+
+# 개발용 설정 파일들
+application-local.properties
+
+# Git 관련
+.git/
+.gitignore
+
+# 임시 파일들
+*.tmp
+*.temp 

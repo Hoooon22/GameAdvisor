@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: gameadvisor-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: gameadvisor_db
+      MYSQL_USER: gameadvisor
+      MYSQL_PASSWORD: gameadvisor123
+    ports:
+      - "3307:3306"  # 호스트의 3307 포트를 컨테이너의 3306 포트로 매핑
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - gameadvisor-network
+    command: --default-authentication-plugin=mysql_native_password
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-prootpassword"]
+      timeout: 20s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: gameadvisor-backend
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-PLACEHOLDER_API_KEY}
+    ports:
+      - "8080:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - gameadvisor-network
+    restart: unless-stopped
+
+volumes:
+  mysql_data:
+
+networks:
+  gameadvisor-network:
+    driver: bridge 

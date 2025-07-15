@@ -157,7 +157,7 @@ cd client
 # 사이트 깊이 탐색 (하위 페이지 자동 수집)
 .\start-web-learning.ps1 -Mode deep -Url "https://bloons.fandom.com" -Category "BTD Wiki" -MaxDepth 3 -MaxPages 20
 
-# 나무위키 BTD6 전략 가이드 전체 수집
+# BTD6 전략 가이드 전체 수집
 .\start-web-learning.ps1 -Mode strategy-guides
 
 # 서비스 상태 확인

@@ -1,12 +1,22 @@
 package com.gameadvisor.service.vector;
 
-import com.gameadvisor.model.vector.BloonsTDKnowledge;
-import com.gameadvisor.model.WebSearchRequest;
-import com.gameadvisor.model.WebSearchResponse;
-import com.gameadvisor.repository.vector.BloonsTDVectorRepository;
-import com.gameadvisor.service.GeminiService;
-import com.gameadvisor.service.WebSearchService;
-import lombok.extern.slf4j.Slf4j;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.Queue;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
@@ -19,22 +29,13 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Queue;
-import java.util.Set;
-import java.util.UUID;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-import java.util.Map;
-import java.util.HashMap;
-import java.util.concurrent.CompletableFuture;
-import java.util.stream.Collectors;
+import com.gameadvisor.model.WebSearchRequest;
+import com.gameadvisor.model.WebSearchResponse;
+import com.gameadvisor.model.vector.BloonsTDKnowledge;
+import com.gameadvisor.repository.vector.BloonsTDVectorRepository;
+import com.gameadvisor.service.WebSearchService;
+
+import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 @Service
@@ -62,137 +63,22 @@ public class WebDataCollectionService {
     private static final List<String> STRATEGY_GUIDE_URLS = Arrays.asList(
         // 메인 게임플레이 및 기본 가이드
         "https://bloons.fandom.com/wiki/Bloons_TD_6",
-        "https://bloons.fandom.com/wiki/Bloons_TD_6/Gameplay",
-        "https://bloons.fandom.com/wiki/Tutorial",
-        
-        // 타워 카테고리별 전략 
-        "https://bloons.fandom.com/wiki/Primary_Monkeys",
-        "https://bloons.fandom.com/wiki/Military_Monkeys", 
-        "https://bloons.fandom.com/wiki/Magic_Monkeys",
-        "https://bloons.fandom.com/wiki/Support_Monkeys",
-        "https://bloons.fandom.com/wiki/Towers",
-        
-        // 개별 주요 타워들
-        "https://bloons.fandom.com/wiki/Dart_Monkey",
-        "https://bloons.fandom.com/wiki/Boomerang_Monkey",
-        "https://bloons.fandom.com/wiki/Bomb_Shooter",
-        "https://bloons.fandom.com/wiki/Tack_Shooter",
-        "https://bloons.fandom.com/wiki/Ice_Monkey",
-        "https://bloons.fandom.com/wiki/Glue_Gunner",
-        "https://bloons.fandom.com/wiki/Sniper_Monkey",
-        "https://bloons.fandom.com/wiki/Monkey_Sub",
-        "https://bloons.fandom.com/wiki/Monkey_Buccaneer",
-        "https://bloons.fandom.com/wiki/Monkey_Ace",
-        "https://bloons.fandom.com/wiki/Heli_Pilot",
-        "https://bloons.fandom.com/wiki/Mortar_Monkey",
-        "https://bloons.fandom.com/wiki/Dartling_Gunner",
-        "https://bloons.fandom.com/wiki/Wizard_Monkey",
-        "https://bloons.fandom.com/wiki/Super_Monkey",
-        "https://bloons.fandom.com/wiki/Ninja_Monkey",
-        "https://bloons.fandom.com/wiki/Alchemist",
-        "https://bloons.fandom.com/wiki/Druid",
-        "https://bloons.fandom.com/wiki/Banana_Farm",
-        "https://bloons.fandom.com/wiki/Spike_Factory",
-        "https://bloons.fandom.com/wiki/Monkey_Village",
-        "https://bloons.fandom.com/wiki/Engineer_Monkey",
-        "https://bloons.fandom.com/wiki/Beast_Handler",
-        
-        // 파라곤 관련
-        "https://bloons.fandom.com/wiki/Paragon",
-        "https://bloons.fandom.com/wiki/Apex_Plasma_Master",
-        "https://bloons.fandom.com/wiki/Ascended_Shadow",
-        "https://bloons.fandom.com/wiki/Navarch_of_the_Seas",
-        "https://bloons.fandom.com/wiki/Goliath_Doomship",
-        "https://bloons.fandom.com/wiki/Master_Builder",
-        
-        // 히어로들
-        "https://bloons.fandom.com/wiki/Heroes",
-        "https://bloons.fandom.com/wiki/Quincy",
-        "https://bloons.fandom.com/wiki/Gwendolin",
-        "https://bloons.fandom.com/wiki/Striker_Jones",
-        "https://bloons.fandom.com/wiki/Obyn_Greenfoot",
-        "https://bloons.fandom.com/wiki/Captain_Churchill",
-        "https://bloons.fandom.com/wiki/Benjamin",
-        "https://bloons.fandom.com/wiki/Ezili",
-        "https://bloons.fandom.com/wiki/Pat_Fusty",
-        "https://bloons.fandom.com/wiki/Adora",
-        "https://bloons.fandom.com/wiki/Admiral_Brickell",
-        "https://bloons.fandom.com/wiki/Etienne",
-        "https://bloons.fandom.com/wiki/Sauda",
-        "https://bloons.fandom.com/wiki/Psi",
-        "https://bloons.fandom.com/wiki/Geraldo",
-        "https://bloons.fandom.com/wiki/Corvus",
-        "https://bloons.fandom.com/wiki/Rosalia",
-        
-        // 블룬 타입들
-        "https://bloons.fandom.com/wiki/Bloons",
-        "https://bloons.fandom.com/wiki/MOAB-Class_Bloons",
-        "https://bloons.fandom.com/wiki/Boss_Bloons",
-        "https://bloons.fandom.com/wiki/Bloonarius",
-        "https://bloons.fandom.com/wiki/Lych",
-        "https://bloons.fandom.com/wiki/Vortex",
-        "https://bloons.fandom.com/wiki/Dreadbloon",
-        "https://bloons.fandom.com/wiki/Phayze",
-        "https://bloons.fandom.com/wiki/Camo_Bloons",
-        "https://bloons.fandom.com/wiki/Regrow_Bloons",
-        "https://bloons.fandom.com/wiki/Fortified_Bloons",
-        "https://bloons.fandom.com/wiki/Golden_Bloons",
-        
-        // 맵 카테고리별
-        "https://bloons.fandom.com/wiki/Maps",
-        "https://bloons.fandom.com/wiki/Beginner_Maps",
-        "https://bloons.fandom.com/wiki/Intermediate_Maps",
-        "https://bloons.fandom.com/wiki/Advanced_Maps",
-        "https://bloons.fandom.com/wiki/Expert_Maps",
-        
-        // 게임 모드
-        "https://bloons.fandom.com/wiki/Game_Modes",
-        "https://bloons.fandom.com/wiki/Standard_Mode",
-        "https://bloons.fandom.com/wiki/Deflation_Mode",
-        "https://bloons.fandom.com/wiki/Military_Only",
-        "https://bloons.fandom.com/wiki/Reverse_Mode",
-        "https://bloons.fandom.com/wiki/Apopalypse_Mode",
-        "https://bloons.fandom.com/wiki/Half_Cash_Mode",
-        "https://bloons.fandom.com/wiki/Double_HP_MOABs",
-        "https://bloons.fandom.com/wiki/Alternate_Bloons_Rounds",
-        "https://bloons.fandom.com/wiki/Impoppable_Mode",
-        "https://bloons.fandom.com/wiki/CHIMPS_Mode",
-        
-        // 멀티플레이어 및 이벤트
-        "https://bloons.fandom.com/wiki/Co-Op_Mode",
-        "https://bloons.fandom.com/wiki/Odyssey_Mode",
-        "https://bloons.fandom.com/wiki/Race_Events",
-        "https://bloons.fandom.com/wiki/Boss_Events",
-        "https://bloons.fandom.com/wiki/Contested_Territory",
-        "https://bloons.fandom.com/wiki/Collection_Events",
-        
-        // 커스텀 요소
-        "https://bloons.fandom.com/wiki/Custom_Challenges",
-        "https://bloons.fandom.com/wiki/Daily_Challenge",
-        "https://bloons.fandom.com/wiki/Challenge_Editor",
-        "https://bloons.fandom.com/wiki/Odyssey_Creator",
-        "https://bloons.fandom.com/wiki/Content_Browser",
-        "https://bloons.fandom.com/wiki/Quests",
-        
-        // 상점 및 업그레이드
-        "https://bloons.fandom.com/wiki/Shop",
-        "https://bloons.fandom.com/wiki/Trophy_Store",
-        "https://bloons.fandom.com/wiki/Monkey_Knowledge",
-        "https://bloons.fandom.com/wiki/Upgrades",
-        "https://bloons.fandom.com/wiki/Crosspathing",
-        
-        // 업적 및 프로필
-        "https://bloons.fandom.com/wiki/Achievements",
-        "https://bloons.fandom.com/wiki/Profile",
-        "https://bloons.fandom.com/wiki/Veteran_Levels",
-        
-        // 고급 전략 및 팁
-        "https://bloons.fandom.com/wiki/Tower_Strategies",
-        "https://bloons.fandom.com/wiki/Synergies",
-        "https://bloons.fandom.com/wiki/Farming_Strategies",
-        "https://bloons.fandom.com/wiki/Target_Priority",
-        "https://bloons.fandom.com/wiki/Damage_Types",
-        "https://bloons.fandom.com/wiki/Status_Effects"
+        "https://www.ign.com/wikis/bloons-td-6",
+        "https://www.ign.com/wikis/bloons-td-6/Bloons_TD_6_Beginner%27s_Tips_and_Tricks",
+        "https://www.ign.com/wikis/bloons-td-6/Bloons_TD_6_Co-op_Play",
+        "https://www.ign.com/wikis/bloons-td-6/Bloons_TD_6_Quests",
+        "https://www.ign.com/wikis/bloons-td-6/All_Hero_Monkeys",
+        "https://www.ign.com/wikis/bloons-td-6/All_Towers_and_Non-Hero_Monkeys_and_Upgrades",
+        "https://www.ign.com/wikis/bloons-td-6/All_Bloons",
+        "https://www.ign.com/wikis/bloons-td-6/All_Difficulties",
+        "https://www.ign.com/wikis/bloons-td-6/All_Game_Modes/Level_Types",
+        "https://www.ign.com/wikis/bloons-td-6/All_Powers",
+        "https://www.ign.com/wikis/bloons-td-6/Best_Hero",
+        "https://www.ign.com/wikis/bloons-td-6/Best_Towers",
+        "https://www.ign.com/wikis/bloons-td-6/Best_Upgrades",
+        "https://www.ign.com/wikis/bloons-td-6/Best_Strategies",
+        "https://www.ign.com/wikis/bloons-td-6/How_to_Use_Insta_Monkeys",
+        "https://www.ign.com/wikis/bloons-td-6/How_to_Upgrade"
     );
     
     // 신뢰할 수 있는 BTD 관련 웹사이트

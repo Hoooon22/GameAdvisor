@@ -28,7 +28,6 @@ services:
     container_name: gameadvisor-backend
     environment:
       SPRING_PROFILES_ACTIVE: docker
-      GEMINI_API_KEY: ${GEMINI_API_KEY:-PLACEHOLDER_API_KEY}
     ports:
       - "8080:8080"
     depends_on:
@@ -38,7 +37,7 @@ services:
       - gameadvisor-network
     restart: unless-stopped
     env_file:
-      - docker-compose.env
+      - ./docker-compose.env
 
 volumes:
   mysql_data:

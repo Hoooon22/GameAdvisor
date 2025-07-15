@@ -37,6 +37,8 @@ services:
     networks:
       - gameadvisor-network
     restart: unless-stopped
+    env_file:
+      - docker-compose.env
 
 volumes:
   mysql_data:

@@ -91,3 +91,8 @@ client/.env
 # JVM crash logs
 hs_err_pid*
 replay_pid*
+
+# docker
+.env
+*.env
+docker-compose.env
